@@ -1,6 +1,6 @@
 ## IDF Component Manager Manifest File
 name: "micro-decoder"
-version: "0.1.1"
+version: "0.1.2"
 description: "C++ audio decoding library with HTTP/HTTPS streaming, supporting FLAC, MP3, Opus, and WAV"
 license: "Apache-2.0"
 maintainers:
