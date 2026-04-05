@@ -1,7 +1,7 @@
 # microDecoder - Audio Decoding Library
 
 [![CI](https://github.com/esphome-libs/micro-decoder/actions/workflows/ci.yml/badge.svg)](https://github.com/esphome-libs/micro-decoder/actions/workflows/ci.yml)
-[![Component Registry](https://components.espressif.com/components/esphome/micro-deocder/badge.svg)](https://components.espressif.com/components/esphome/micro-decoder)
+[![Component Registry](https://components.espressif.com/components/esphome/micro-decoder/badge.svg)](https://components.espressif.com/components/esphome/micro-decoder)
 
 C++ audio decoding library for ESP32 and host platforms. Reads audio from HTTP/HTTPS URLs or in-memory buffers, decodes FLAC/MP3/Opus/WAV, and delivers PCM via a callback.
 
