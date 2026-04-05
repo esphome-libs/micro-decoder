@@ -8,7 +8,7 @@ maintainers:
 url: https://github.com/esphome-libs/micro-decoder
 repository: https://github.com/esphome-libs/micro-decoder.git
 dependencies:
-  idf: ">=5.1"
+  idf: ">=5.5"
   esphome/micro-flac:
     version: ">=0.1.1,<1.0.0"
     rules:
