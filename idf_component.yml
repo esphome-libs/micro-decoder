@@ -11,12 +11,20 @@ dependencies:
   idf: ">=5.1"
   esphome/micro-flac:
     version: ">=0.1.1,<1.0.0"
+    rules:
+      - if: "$CONFIG{MICRO_DECODER_CODEC_FLAC} == True"
   esphome/micro-mp3:
     version: ">=0.1.0,<1.0.0"
+    rules:
+      - if: "$CONFIG{MICRO_DECODER_CODEC_MP3} == True"
   esphome/micro-opus:
     version: ">=0.3.5,<1.0.0"
+    rules:
+      - if: "$CONFIG{MICRO_DECODER_CODEC_OPUS} == True"
   esphome/micro-wav:
     version: ">=0.1.0,<1.0.0"
+    rules:
+      - if: "$CONFIG{MICRO_DECODER_CODEC_WAV} == True"
 files:
   exclude:
     - ".claude/**"
