@@ -75,7 +75,7 @@ idf.py menuconfig
 # Navigate to: Micro Decoder
 ```
 
-Each codec has a `CONFIG_MICRO_DECODER_CODEC_*` bool option (default `y`). Disabling a codec removes all of its code paths from microDecoder. The codec libraries themselves are still built as IDF components because `idf_component.yml` dependencies cannot be conditionally excluded. However, since nothing references their symbols, the linker's `--gc-sections` pass (enabled by default in ESP-IDF) should strip them from the final binary.
+Each codec has a `CONFIG_MICRO_DECODER_CODEC_*` bool option (default `y`). Disabling a codec removes all of its code paths from microDecoder and excludes the corresponding codec library from the build.
 
 ## Headers
 
