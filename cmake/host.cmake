@@ -25,8 +25,10 @@ function(micro_decoder_configure_host TARGET_LIB SOURCE_DIR)
         -Wshadow
         -Wnon-virtual-dtor
         -Wold-style-cast
-        -Wno-gnu-zero-variadic-macro-arguments
     )
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(${TARGET_LIB} PRIVATE -Wno-gnu-zero-variadic-macro-arguments)
+    endif()
     if(ENABLE_WERROR)
         target_compile_options(${TARGET_LIB} PRIVATE -Werror)
     endif()
