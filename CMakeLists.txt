@@ -58,7 +58,7 @@ if(ESP_IDF_BUILD)
 # ==============================================================================
 
 else()
-    project(micro_decoder VERSION 0.1.0 LANGUAGES CXX)
+    project(micro_decoder VERSION 0.1.1 LANGUAGES CXX)
 
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
