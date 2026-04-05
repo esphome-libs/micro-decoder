@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify CI passed on release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Check that all expected CI checks passed on this commit
+          EXPECTED_CHECKS=("Build" "PlatformIO Build" "Static analysis" "Pre-commit checks")
+          CONCLUSIONS=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs \
+            --jq '.check_runs[] | select(.name == "Build" or .name == "PlatformIO Build" or .name == "Static analysis" or .name == "Pre-commit checks") | .name + "=" + .conclusion')
+
+          for check in "${EXPECTED_CHECKS[@]}"; do
+            match=$(echo "$CONCLUSIONS" | grep "^${check}=" | tail -1 || true)
+            if [ -z "$match" ]; then
+              echo "Required CI check not found: $check"
+              exit 1
+            fi
+            conclusion="${match#*=}"
+            if [ "$conclusion" != "success" ]; then
+              echo "CI check '$check' did not pass: $conclusion"
+              exit 1
+            fi
+            echo "CI check '$check' passed"
+          done
+
+  publish-espressif:
+    name: Publish to Espressif
+    needs: [ci-gate]
+    runs-on: ubuntu-latest
+    environment: espressif
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Publish package
+        uses: espressif/upload-components-ci-action@2ce17d73e35473317c1419dbd4f007aacb593040 # v2.2.1
+        with:
+          version: ${{ github.event.release.tag_name }}
+          components: |
+            micro-decoder: .
+          namespace: esphome

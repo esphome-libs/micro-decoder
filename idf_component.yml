@@ -1,0 +1,32 @@
+## IDF Component Manager Manifest File
+name: "micro-decoder"
+version: "0.1.0"
+description: "C++ audio decoding library with HTTP/HTTPS streaming, supporting FLAC, MP3, Opus, and WAV"
+license: "Apache-2.0"
+maintainers:
+  - Kevin Ahrendt <kevin.ahrendt@openhomefoundation.org>
+url: https://github.com/esphome-libs/micro-decoder
+repository: https://github.com/esphome-libs/micro-decoder.git
+dependencies:
+  idf: ">=5.1"
+  esphome/micro-flac:
+    version: ">=0.1.1,<1.0.0"
+  esphome/micro-mp3:
+    version: ">=0.1.0,<1.0.0"
+  esphome/micro-opus:
+    version: ">=0.3.5,<1.0.0"
+  esphome/micro-wav:
+    version: ">=0.1.0,<1.0.0"
+files:
+  exclude:
+    - ".claude/**"
+    - ".github/**"
+    - ".clang-*"
+    - ".clangd"
+    - ".markdownlint.yaml"
+    - ".pre-commit-config.yaml"
+    - "CLAUDE.md"
+    - "build/**"
+    - "examples/**"
+    - "host_examples/**"
+    - "script/**"

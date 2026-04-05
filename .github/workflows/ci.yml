@@ -1,0 +1,101 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    name: Pre-commit checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - uses: esphome/pre-commit-action@43cd1109c09c544d97196f7730ee5b2e0cc6d81e # v3.0.1 fork with pinned actions/cache
+
+  lint:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-18 libcurl4-openssl-dev portaudio19-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Run clang-tidy
+        run: ./script/clang-tidy.sh
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev portaudio19-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Configure CMake
+        run: cmake -B build -DENABLE_WERROR=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+  platformio:
+    name: PlatformIO Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - example: decode_benchmark
+            environments: esp32,esp32s3
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.platformio
+            examples/${{ matrix.example }}/.pio
+            examples/${{ matrix.example }}/managed_components
+          key: pio-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/platformio.ini', matrix.example), format('examples/{0}/dependencies.lock', matrix.example)) }}
+          restore-keys: |
+            pio-${{ matrix.example }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build ${{ matrix.example }}
+        run: |
+          IFS=',' read -ra ENVS <<< "${{ matrix.environments }}"
+          for env in "${ENVS[@]}"; do
+            echo "Building environment: $env"
+            pio run -d examples/${{ matrix.example }} -e "$env"
+          done
