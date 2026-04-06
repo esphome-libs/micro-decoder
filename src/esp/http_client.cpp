@@ -165,8 +165,7 @@ public:
         if (this->client_ == nullptr) {
             return -1;
         }
-        if (esp_http_client_is_complete_data_received(this->client_)) {
-            this->complete_ = true;
+        if (this->complete_) {
             return 0;
         }
         int received = esp_http_client_read(this->client_, reinterpret_cast<char*>(buffer),
