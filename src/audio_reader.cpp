@@ -29,8 +29,10 @@ static constexpr const char* TAG = "audio_reader";
 // ============================================================================
 
 AudioReader::AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
-                         uint32_t write_timeout_ms, size_t http_rx_buffer_size)
-    : http_rx_buffer_size_(http_rx_buffer_size),
+                         uint32_t write_timeout_ms, size_t http_rx_buffer_size,
+                         std::string user_agent)
+    : user_agent_(std::move(user_agent)),
+      http_rx_buffer_size_(http_rx_buffer_size),
       http_timeout_ms_(http_timeout_ms),
       write_timeout_ms_(write_timeout_ms),
       allocation_ok_(this->transfer_buffer_.allocate(transfer_buffer_size)) {}
@@ -49,7 +51,8 @@ bool AudioReader::start_url(const std::string& url) {
     this->file_type_ = AudioFileType::NONE;
     this->client_ = create_http_client();
 
-    if (!this->client_->open(url, this->http_timeout_ms_, this->http_rx_buffer_size_)) {
+    if (!this->client_->open(url, this->http_timeout_ms_, this->http_rx_buffer_size_,
+                             this->user_agent_)) {
         MD_LOGE(TAG, "Failed to connect to URL: %s", url.c_str());
         this->client_.reset();
         return false;

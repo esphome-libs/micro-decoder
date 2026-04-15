@@ -60,8 +60,8 @@ public:
     /// @param timeout_ms Connection and transfer timeout in milliseconds; 0 uses a platform default
     /// @param rx_buffer_size Unused on host (curl manages its own buffers)
     /// @return true on success (2xx status), false on connection error or non-2xx status
-    bool open(const std::string& url, uint32_t timeout_ms,
-              [[maybe_unused]] size_t rx_buffer_size) override {
+    bool open(const std::string& url, uint32_t timeout_ms, [[maybe_unused]] size_t rx_buffer_size,
+              const std::string& user_agent) override {
         this->close();
 
         this->easy_ = curl_easy_init();
@@ -93,6 +93,9 @@ public:
         this->response_ = HttpResponse{};
 
         curl_easy_setopt(this->easy_, CURLOPT_URL, url.c_str());
+        if (!user_agent.empty()) {
+            curl_easy_setopt(this->easy_, CURLOPT_USERAGENT, user_agent.c_str());
+        }
         curl_easy_setopt(this->easy_, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(this->easy_, CURLOPT_MAXREDIRS, 5L);
         // Cap connect timeout to 10s: connections that take longer almost always fail

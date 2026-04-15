@@ -49,7 +49,8 @@ public:
     /// @param timeout_ms Connection and transfer timeout in milliseconds; 0 uses a platform default
     /// @param rx_buffer_size Size of the ESP-IDF HTTP receive buffer in bytes
     /// @return true on success (2xx status), false on connection error or non-2xx status
-    bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size) override {
+    bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
+              const std::string& user_agent) override {
         this->close();
         this->complete_ = false;
         this->response_ = HttpResponse{};
@@ -63,6 +64,9 @@ public:
         cfg.buffer_size = static_cast<int>(rx_buffer_size);
         cfg.keep_alive_enable = true;
         cfg.timeout_ms = static_cast<int>(timeout_ms);
+        if (!user_agent.empty()) {
+            cfg.user_agent = user_agent.c_str();
+        }
 
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
         if (url.find("https:") != std::string::npos || url.find("HTTPS:") != std::string::npos) {

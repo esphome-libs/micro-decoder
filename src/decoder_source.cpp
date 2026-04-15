@@ -131,7 +131,8 @@ struct DecoderSource::Impl {
     /// @brief Reader thread entry point that streams from an HTTP URL
     void reader_thread_func(const std::string& url) {
         AudioReader reader(this->config.transfer_buffer_size, this->config.http_timeout_ms,
-                           this->config.reader_write_timeout_ms, this->config.http_rx_buffer_size);
+                           this->config.reader_write_timeout_ms, this->config.http_rx_buffer_size,
+                           this->config.http_user_agent);
         reader.set_sink(&this->ring_buffer);
 
         if (!reader.start_url(url)) {
