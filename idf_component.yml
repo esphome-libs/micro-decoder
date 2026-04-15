@@ -14,7 +14,7 @@ dependencies:
     rules:
       - if: "$CONFIG{MICRO_DECODER_CODEC_FLAC} == True"
   esphome/micro-mp3:
-    version: ">=0.1.0,<1.0.0"
+    version: ">=0.2.0,<1.0.0"
     rules:
       - if: "$CONFIG{MICRO_DECODER_CODEC_MP3} == True"
   esphome/micro-opus:
