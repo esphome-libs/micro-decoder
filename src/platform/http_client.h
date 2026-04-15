@@ -61,8 +61,10 @@ public:
     /// @param timeout_ms  Connection and transfer timeout in milliseconds; 0 uses a platform
     /// default
     /// @param rx_buffer_size  Size of the platform HTTP receive buffer in bytes (ESP-IDF only)
+    /// @param user_agent  Optional User-Agent header value; empty string uses the platform default
     /// @return true on success (2xx or 3xx handled internally)
-    virtual bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size) = 0;
+    virtual bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
+                      const std::string& user_agent) = 0;
 
     /// @brief Returns response metadata (status code, Content-Type header)
     /// @note Valid after a successful open() and before close()

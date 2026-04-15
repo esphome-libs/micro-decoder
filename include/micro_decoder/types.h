@@ -20,6 +20,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+
+#ifndef MICRO_DECODER_VERSION
+#define MICRO_DECODER_VERSION "0.0.0"
+#endif
 
 namespace micro_decoder {
 
@@ -231,6 +236,12 @@ public:
 
 /// @brief Configuration for DecoderSource
 struct DecoderConfig {
+    /// @brief HTTP User-Agent header value sent with streaming requests.
+    /// Defaults to "micro-decoder/<version> (https://github.com/esphome-libs/micro-decoder)".
+    /// Set to an empty string to fall back to the underlying HTTP client's default.
+    std::string http_user_agent{"micro-decoder/" MICRO_DECODER_VERSION
+                                " (https://github.com/esphome-libs/micro-decoder)"};
+
     /// @brief Size of the ring buffer between reader and decoder threads (bytes)
     size_t ring_buffer_size{static_cast<size_t>(48) * 1024};  // NOLINT(readability-magic-numbers)
 

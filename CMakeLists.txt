@@ -26,6 +26,18 @@ else()
 endif()
 
 # ==============================================================================
+# Version (single source of truth: idf_component.yml)
+# ==============================================================================
+
+file(READ ${MICRO_DECODER_COMPONENT_DIR}/idf_component.yml _micro_decoder_manifest)
+string(REGEX MATCH "version:[ \t]*[\"']?([0-9]+\\.[0-9]+\\.[0-9]+)[\"']?"
+       _ ${_micro_decoder_manifest})
+set(MICRO_DECODER_VERSION ${CMAKE_MATCH_1})
+if(NOT MICRO_DECODER_VERSION)
+    message(FATAL_ERROR "Failed to parse version from idf_component.yml")
+endif()
+
+# ==============================================================================
 # Include CMake modules
 # ==============================================================================
 
@@ -53,12 +65,15 @@ if(ESP_IDF_BUILD)
     # Apply ESP-IDF configuration
     micro_decoder_configure_esp_idf(${COMPONENT_LIB} ${COMPONENT_DIR})
 
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        MICRO_DECODER_VERSION="${MICRO_DECODER_VERSION}")
+
 # ==============================================================================
 # Host Build
 # ==============================================================================
 
 else()
-    project(micro_decoder VERSION 0.2.0 LANGUAGES CXX)
+    project(micro_decoder VERSION ${MICRO_DECODER_VERSION} LANGUAGES CXX)
 
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -76,6 +91,9 @@ else()
 
     # Apply host configuration
     micro_decoder_configure_host(micro_decoder ${CMAKE_CURRENT_SOURCE_DIR})
+
+    target_compile_definitions(micro_decoder PUBLIC
+        MICRO_DECODER_VERSION="${MICRO_DECODER_VERSION}")
 
     # Examples
     add_subdirectory(host_examples/basic_player)
