@@ -9,6 +9,13 @@ function(micro_decoder_configure_esp_idf TARGET_LIB COMPONENT_DIR)
         -Wnon-virtual-dtor
     )
 
+    # Enable debug-level logging for this library regardless of ESP-IDF's global default.
+    # ESP-IDF defaults to ERROR in ESPHome, which compiles out all INFO/DEBUG/WARN logs.
+    # LOG_LOCAL_LEVEL overrides the compile-time maximum for this component only.
+    target_compile_definitions(${TARGET_LIB} PRIVATE
+        LOG_LOCAL_LEVEL=ESP_LOG_DEBUG
+    )
+
     # =========================================================================
     # Codec options: translate Kconfig to compiler defines
     # =========================================================================
