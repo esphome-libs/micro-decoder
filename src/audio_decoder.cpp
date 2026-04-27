@@ -20,7 +20,7 @@
 
 namespace micro_decoder {
 
-static constexpr const char* TAG = "audio_decoder";
+static constexpr const char* TAG = "micro_decoder.audio_decoder";
 
 static constexpr uint32_t MAX_POTENTIALLY_FAILED_COUNT = 10;
 static constexpr uint32_t READ_TIMEOUT_MS = 20;

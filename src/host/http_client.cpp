@@ -27,7 +27,7 @@
 
 namespace micro_decoder {
 
-static constexpr const char* TAG = "http_client";
+static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr size_t CURL_BUFFER_SIZE = 32UL * 1024UL;
 static constexpr int POLL_TIMEOUT_MS = 100;

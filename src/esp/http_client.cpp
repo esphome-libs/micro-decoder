@@ -26,7 +26,7 @@
 
 namespace micro_decoder {
 
-static constexpr const char* TAG = "http_client";
+static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr uint8_t MAX_REDIRECTIONS = 5;
 static constexpr uint8_t MAX_HEADER_ATTEMPTS = 6;
