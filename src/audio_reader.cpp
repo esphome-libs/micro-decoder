@@ -22,7 +22,7 @@ namespace micro_decoder {
 // Static constants
 // ============================================================================
 
-static constexpr const char* TAG = "audio_reader";
+static constexpr const char* TAG = "micro_decoder.audio_reader";
 
 // ============================================================================
 // AudioReader

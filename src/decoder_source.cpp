@@ -26,7 +26,7 @@
 
 namespace micro_decoder {
 
-static constexpr const char* TAG = "decoder_source";
+static constexpr const char* TAG = "micro_decoder.decoder_source";
 
 // ============================================================================
 // Event flag bits
