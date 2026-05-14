@@ -97,6 +97,7 @@ public:
             curl_easy_setopt(this->easy_, CURLOPT_USERAGENT, user_agent.c_str());
         }
         if (!ca_certificate.empty()) {
+#ifdef CURLOPT_CAINFO_BLOB
             // CURL_BLOB_COPY: libcurl copies the data immediately, so .data() lifetime is fine.
             curl_blob blob{
                 static_cast<void*>(const_cast<char*>(ca_certificate.data())),
@@ -104,6 +105,12 @@ public:
                 CURL_BLOB_COPY,
             };
             curl_easy_setopt(this->easy_, CURLOPT_CAINFO_BLOB, &blob);
+#else
+            MD_LOGE(TAG, "ca_certificate set but CURLOPT_CAINFO_BLOB is unavailable "
+                         "(requires libcurl >= 7.77.0); refusing to connect");
+            this->close();
+            return false;
+#endif
         }
         curl_easy_setopt(this->easy_, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(this->easy_, CURLOPT_MAXREDIRS, 5L);
