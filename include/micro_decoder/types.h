@@ -242,6 +242,15 @@ struct DecoderConfig {
     std::string http_user_agent{"micro-decoder/" MICRO_DECODER_VERSION
                                 " (https://github.com/esphome-libs/micro-decoder)"};
 
+    /// @brief PEM-encoded CA certificate(s) used to verify HTTPS server certificates.
+    /// When empty, the platform default is used: on ESP-IDF the built-in
+    /// MbedTLS certificate bundle (when CONFIG_MBEDTLS_CERTIFICATE_BUNDLE is
+    /// enabled); on host (libcurl) the system trust store.
+    /// When non-empty, the string must contain one or more PEM-formatted
+    /// certificates and is used as the sole trust anchor for HTTPS requests.
+    /// Ignored for plain HTTP URLs.
+    std::string http_ca_certificate;
+
     /// @brief Size of the ring buffer between reader and decoder threads (bytes)
     size_t ring_buffer_size{static_cast<size_t>(48) * 1024};  // NOLINT(readability-magic-numbers)
 

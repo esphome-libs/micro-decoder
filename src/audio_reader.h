@@ -61,7 +61,7 @@ class AudioReader {
 public:
     explicit AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
                          uint32_t write_timeout_ms, size_t http_rx_buffer_size,
-                         std::string user_agent);
+                         std::string user_agent, std::string ca_certificate);
     ~AudioReader();
 
     AudioReader(const AudioReader&) = delete;
@@ -94,6 +94,7 @@ private:
     // Struct fields
     TransferBuffer transfer_buffer_;
     std::string user_agent_;
+    std::string ca_certificate_;
 
     // Pointer fields
     std::unique_ptr<HttpClient> client_;

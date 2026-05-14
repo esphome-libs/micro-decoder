@@ -61,7 +61,7 @@ public:
     /// @param rx_buffer_size Unused on host (curl manages its own buffers)
     /// @return true on success (2xx status), false on connection error or non-2xx status
     bool open(const std::string& url, uint32_t timeout_ms, [[maybe_unused]] size_t rx_buffer_size,
-              const std::string& user_agent) override {
+              const std::string& user_agent, const std::string& ca_certificate) override {
         this->close();
 
         this->easy_ = curl_easy_init();
@@ -95,6 +95,15 @@ public:
         curl_easy_setopt(this->easy_, CURLOPT_URL, url.c_str());
         if (!user_agent.empty()) {
             curl_easy_setopt(this->easy_, CURLOPT_USERAGENT, user_agent.c_str());
+        }
+        if (!ca_certificate.empty()) {
+            // CURL_BLOB_COPY: libcurl copies the data immediately, so .data() lifetime is fine.
+            curl_blob blob{
+                static_cast<void*>(const_cast<char*>(ca_certificate.data())),
+                ca_certificate.size(),
+                CURL_BLOB_COPY,
+            };
+            curl_easy_setopt(this->easy_, CURLOPT_CAINFO_BLOB, &blob);
         }
         curl_easy_setopt(this->easy_, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(this->easy_, CURLOPT_MAXREDIRS, 5L);

@@ -179,6 +179,16 @@ if (!ok) {
 
 Supported schemes: `http://`, `https://`. The audio format is detected from the `Content-Type` response header, falling back to the URL file extension.
 
+For HTTPS, server certificates are verified against the platform default trust store: on ESP-IDF this is the built-in MbedTLS certificate bundle (requires `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`); on host it is the system trust store. To pin a custom CA — for example a private server — set `DecoderConfig::http_ca_certificate` to the PEM-encoded certificate content (not a file path):
+
+```cpp
+DecoderConfig config;
+config.http_ca_certificate = R"(-----BEGIN CERTIFICATE-----
+MIID...
+-----END CERTIFICATE-----
+)";
+```
+
 ### Decoding from an In-Memory Buffer
 
 ```cpp
@@ -316,6 +326,8 @@ int main() {
 | `ring_buffer_size` | `size_t` | `49152` (48 KB) | Ring buffer size in bytes between the reader and decoder threads. Larger values absorb more HTTP jitter at the cost of memory. |
 | `transfer_buffer_size` | `size_t` | `8192` (8 KB) | Flat staging buffer size in bytes. Used by the reader to batch HTTP data into the ring buffer and by the decoder for its output buffer. |
 | `http_timeout_ms` | `uint32_t` | `5000` | HTTP connect and read timeout in milliseconds. |
+| `http_user_agent` | `std::string` | `"micro-decoder/<version> (https://github.com/esphome-libs/micro-decoder)"` | User-Agent header value sent with streaming requests. Set to empty to fall back to the underlying HTTP client's default. |
+| `http_ca_certificate` | `std::string` | `""` | PEM-encoded CA certificate(s) used to verify HTTPS servers. Empty falls back to the platform default trust store (MbedTLS certificate bundle on ESP-IDF when `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE` is enabled; system trust store on host). Ignored for plain HTTP. |
 | `audio_write_timeout_ms` | `uint32_t` | `25` | Maximum time to block in `on_audio_write()` per call, in milliseconds. |
 | `reader_write_timeout_ms` | `uint32_t` | `25` | Maximum time the reader blocks writing to the ring buffer per call, in milliseconds. |
 | `http_rx_buffer_size` | `size_t` | `2048` | ESP-IDF HTTP client receive buffer size in bytes. ESP-IDF only. |
