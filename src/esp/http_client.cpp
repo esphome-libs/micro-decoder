@@ -35,7 +35,19 @@ static constexpr uint8_t MAX_HEADER_ATTEMPTS = 6;
 static bool url_has_https_scheme(const std::string& url) {
     static constexpr char SCHEME[] = "https:";
     static constexpr size_t SCHEME_LEN = sizeof(SCHEME) - 1;
-    return url.size() >= SCHEME_LEN && strncasecmp(url.c_str(), SCHEME, SCHEME_LEN) == 0;
+    if (url.size() < SCHEME_LEN) {
+        return false;
+    }
+    for (size_t i = 0; i < SCHEME_LEN; ++i) {
+        char c = url[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c + ('a' - 'A'));
+        }
+        if (c != SCHEME[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ============================================================================
