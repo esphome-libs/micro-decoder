@@ -31,6 +31,25 @@ static constexpr const char* TAG = "micro_decoder.http_client";
 static constexpr uint8_t MAX_REDIRECTIONS = 5;
 static constexpr uint8_t MAX_HEADER_ATTEMPTS = 6;
 
+/// @brief Returns true if the URL begins with an "https:" scheme (case-insensitive)
+static bool url_has_https_scheme(const std::string& url) {
+    static constexpr char SCHEME[] = "https:";
+    static constexpr size_t SCHEME_LEN = sizeof(SCHEME) - 1;
+    if (url.size() < SCHEME_LEN) {
+        return false;
+    }
+    for (size_t i = 0; i < SCHEME_LEN; ++i) {
+        char c = url[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c + ('a' - 'A'));
+        }
+        if (c != SCHEME[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // ============================================================================
 // EspHttpClient
 // ============================================================================
@@ -50,7 +69,7 @@ public:
     /// @param rx_buffer_size Size of the ESP-IDF HTTP receive buffer in bytes
     /// @return true on success (2xx status), false on connection error or non-2xx status
     bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
-              const std::string& user_agent) override {
+              const std::string& user_agent, const std::string& ca_certificate) override {
         this->close();
         this->complete_ = false;
         this->response_ = HttpResponse{};
@@ -68,11 +87,15 @@ public:
             cfg.user_agent = user_agent.c_str();
         }
 
+        if (url_has_https_scheme(url)) {
+            if (!ca_certificate.empty()) {
+                cfg.cert_pem = ca_certificate.c_str();
+            } else {
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
-        if (url.find("https:") != std::string::npos || url.find("HTTPS:") != std::string::npos) {
-            cfg.crt_bundle_attach = esp_crt_bundle_attach;
-        }
+                cfg.crt_bundle_attach = esp_crt_bundle_attach;
 #endif
+            }
+        }
 
         this->client_ = esp_http_client_init(&cfg);
         if (this->client_ == nullptr) {
@@ -97,6 +120,7 @@ public:
             }
             this->cleanup();
             this->response_ = HttpResponse{};
+            // cfg is unchanged across retries; cert_pem / crt_bundle_attach persist.
             this->client_ = esp_http_client_init(&cfg);
             if (this->client_ == nullptr) {
                 MD_LOGE(TAG, "esp_http_client_init failed in retry loop");

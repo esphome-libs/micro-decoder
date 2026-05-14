@@ -132,7 +132,7 @@ struct DecoderSource::Impl {
     void reader_thread_func(const std::string& url) {
         AudioReader reader(this->config.transfer_buffer_size, this->config.http_timeout_ms,
                            this->config.reader_write_timeout_ms, this->config.http_rx_buffer_size,
-                           this->config.http_user_agent);
+                           this->config.http_user_agent, this->config.http_ca_certificate);
         reader.set_sink(&this->ring_buffer);
 
         if (!reader.start_url(url)) {

@@ -30,8 +30,9 @@ static constexpr const char* TAG = "micro_decoder.audio_reader";
 
 AudioReader::AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
                          uint32_t write_timeout_ms, size_t http_rx_buffer_size,
-                         std::string user_agent)
+                         std::string user_agent, std::string ca_certificate)
     : user_agent_(std::move(user_agent)),
+      ca_certificate_(std::move(ca_certificate)),
       http_rx_buffer_size_(http_rx_buffer_size),
       http_timeout_ms_(http_timeout_ms),
       write_timeout_ms_(write_timeout_ms),
@@ -52,7 +53,7 @@ bool AudioReader::start_url(const std::string& url) {
     this->client_ = create_http_client();
 
     if (!this->client_->open(url, this->http_timeout_ms_, this->http_rx_buffer_size_,
-                             this->user_agent_)) {
+                             this->user_agent_, this->ca_certificate_)) {
         MD_LOGE(TAG, "Failed to connect to URL: %s", url.c_str());
         this->client_.reset();
         return false;

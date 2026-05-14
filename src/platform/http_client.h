@@ -62,9 +62,12 @@ public:
     /// default
     /// @param rx_buffer_size  Size of the platform HTTP receive buffer in bytes (ESP-IDF only)
     /// @param user_agent  Optional User-Agent header value; empty string uses the platform default
+    /// @param ca_certificate  Optional PEM-encoded CA certificate(s) used to verify HTTPS
+    /// servers. Empty string falls back to the platform default trust store (cert bundle on
+    /// ESP-IDF, system trust store on host). Ignored for plain HTTP.
     /// @return true on success (2xx or 3xx handled internally)
     virtual bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
-                      const std::string& user_agent) = 0;
+                      const std::string& user_agent, const std::string& ca_certificate) = 0;
 
     /// @brief Returns response metadata (status code, Content-Type header)
     /// @note Valid after a successful open() and before close()
