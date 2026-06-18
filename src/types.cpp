@@ -16,6 +16,7 @@
 
 #include "platform/logging.h"
 
+#include <cctype>
 #include <cstring>
 
 namespace micro_decoder {
@@ -47,6 +48,22 @@ static AudioFileType type_from_content_type(const char* content_type) {
     [[maybe_unused]] auto contains = [&](const char* needle) -> bool {
         return strcasestr(content_type, needle) != nullptr;
     };
+    // Case-insensitive whole-token match (bounded by non-alphanumeric characters).
+    // Used for bare codec tokens like "opus" so codecs=notopus / opusenc don't match.
+    [[maybe_unused]] auto contains_token = [&](const char* needle) -> bool {
+        size_t needle_len = strlen(needle);
+        const char* pos = content_type;
+        while ((pos = strcasestr(pos, needle)) != nullptr) {
+            bool left_ok =
+                (pos == content_type) || (isalnum(static_cast<unsigned char>(pos[-1])) == 0);
+            bool right_ok = isalnum(static_cast<unsigned char>(pos[needle_len])) == 0;
+            if (left_ok && right_ok) {
+                return true;
+            }
+            pos += 1;
+        }
+        return false;
+    };
 
 #ifdef MICRO_DECODER_CODEC_FLAC
     if (contains("audio/flac") || contains("audio/x-flac")) {
@@ -58,11 +75,25 @@ static AudioFileType type_from_content_type(const char* content_type) {
         return AudioFileType::MP3;
     }
 #endif
+    // Ogg can carry Opus or Vorbis. The classification is the same in every build:
+    // an explicit opus signal ("audio/opus" or an Ogg type naming opus, e.g.
+    // audio/ogg;codecs=opus) is Opus; any other Ogg type is Vorbis. A type whose codec
+    // is compiled out returns NONE rather than being reclassified as the other codec.
+    if (contains("audio/opus") ||
+        ((contains("audio/ogg") || contains("application/ogg")) && contains_token("opus"))) {
 #ifdef MICRO_DECODER_CODEC_OPUS
-    if (contains("audio/ogg") || contains("audio/opus") || contains("application/ogg")) {
         return AudioFileType::OPUS;
-    }
+#else
+        return AudioFileType::NONE;
 #endif
+    }
+    if (contains("audio/vorbis") || contains("audio/ogg") || contains("application/ogg")) {
+#ifdef MICRO_DECODER_CODEC_VORBIS
+        return AudioFileType::VORBIS;
+#else
+        return AudioFileType::NONE;
+#endif
+    }
 #ifdef MICRO_DECODER_CODEC_WAV
     if (contains("audio/wav") || contains("audio/x-wav") || contains("audio/wave")) {
         return AudioFileType::WAV;
@@ -103,11 +134,13 @@ static AudioFileType type_from_url_extension(const char* url) {
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_OPUS
-    if (ext_len == 3 && strncasecmp(ext, "ogg", 3) == 0) {
-        return AudioFileType::OPUS;
-    }
     if (ext_len == 4 && strncasecmp(ext, "opus", 4) == 0) {
         return AudioFileType::OPUS;
+    }
+#endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+    if (ext_len == 3 && strncasecmp(ext, "ogg", 3) == 0) {
+        return AudioFileType::VORBIS;
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_WAV
@@ -132,6 +165,10 @@ const char* audio_file_type_to_string(AudioFileType file_type) {
 #ifdef MICRO_DECODER_CODEC_OPUS
         case AudioFileType::OPUS:
             return "OPUS";
+#endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+        case AudioFileType::VORBIS:
+            return "VORBIS";
 #endif
 #ifdef MICRO_DECODER_CODEC_WAV
         case AudioFileType::WAV:

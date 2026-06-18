@@ -58,8 +58,11 @@ enum class AudioFileType : uint8_t {
 #ifdef MICRO_DECODER_CODEC_OPUS
     OPUS = 3,
 #endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+    VORBIS = 4,
+#endif
 #ifdef MICRO_DECODER_CODEC_WAV
-    WAV = 4,
+    WAV = 5,
 #endif
 };
 

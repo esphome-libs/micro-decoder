@@ -3,14 +3,14 @@
 [![CI](https://github.com/esphome-libs/micro-decoder/actions/workflows/ci.yml/badge.svg)](https://github.com/esphome-libs/micro-decoder/actions/workflows/ci.yml)
 [![Component Registry](https://components.espressif.com/components/esphome/micro-decoder/badge.svg)](https://components.espressif.com/components/esphome/micro-decoder)
 
-C++ audio decoding library for ESP32 and host platforms. Reads audio from HTTP/HTTPS URLs or in-memory buffers, decodes FLAC/MP3/Opus/WAV, and delivers PCM via a callback.
+C++ audio decoding library for ESP32 and host platforms. Reads audio from HTTP/HTTPS URLs or in-memory buffers, decodes FLAC/MP3/Opus/Vorbis/WAV, and delivers PCM via a callback.
 
 [![A project from the Open Home Foundation](https://www.openhomefoundation.org/badges/ohf-project.png)](https://www.openhomefoundation.org/)
 
 ## Features
 
 - **HTTP/HTTPS streaming:** automatic format detection from Content-Type headers and URL extensions
-- **FLAC, MP3, Opus, and WAV:** decoding via the microFLAC, microMP3, microOpus, and microWAV libraries (individually toggleable)
+- **FLAC, MP3, Opus, Vorbis, and WAV:** decoding via the microFLAC, microMP3, microOpus, microVorbis, and microWAV libraries (individually toggleable)
 - **Cross-platform:** ESP-IDF (ESP32) and host (macOS/Linux)
 - **Callback-driven PCM delivery:** backpressure support via blocking writes with configurable timeouts
 
@@ -25,7 +25,7 @@ cmake --build build
 
 Requires `CMake >= 3.16`, a C++17 compiler, `libcurl`, and `portaudio` (for the example player).
 
-Codec dependencies (`micro-flac`, `micro-mp3`, `micro-opus`, `micro-wav`) are fetched automatically via CMake FetchContent.
+Codec dependencies (`micro-flac`, `micro-mp3`, `micro-opus`, `micro-vorbis`, `micro-wav`) are fetched automatically via CMake FetchContent.
 
 #### Basic Player Example
 
@@ -40,7 +40,7 @@ The `host_examples/` directory contains a CLI player using PortAudio for audio o
 
 Used as an IDF component. Place under your project's `components/` directory or declare as a managed component in `idf_component.yml`. Add `micro_decoder` (or `micro-decoder` for managed components) to the `REQUIRES` list in your component's `CMakeLists.txt`.
 
-See `examples/decode_benchmark/` for an [ESP32 benchmark](examples/decode_benchmark/) that decodes all four formats from flash and reports timing.
+See `examples/decode_benchmark/` for an [ESP32 benchmark](examples/decode_benchmark/) that decodes all five formats from flash and reports timing.
 
 ### Code Example
 
@@ -99,4 +99,5 @@ Apache 2.0
 - [microFLAC](https://github.com/esphome-libs/micro-flac)
 - [microMP3](https://github.com/esphome-libs/micro-mp3)
 - [microOpus](https://github.com/esphome-libs/micro-opus)
+- [microVorbis](https://github.com/esphome-libs/micro-vorbis)
 - [microWAV](https://github.com/esphome-libs/micro-wav)

@@ -1,10 +1,10 @@
 # Decode Benchmark for ESP32
 
-Measures decoding performance for all four supported audio formats (FLAC, MP3, Opus, WAV) using `DecoderSource::play_buffer()`. Decodes ~10-second audio clips embedded in flash and reports timing statistics. No audio output.
+Measures decoding performance for all five supported audio formats (FLAC, MP3, Opus, Vorbis, WAV) using `DecoderSource::play_buffer()`. Decodes ~10-second audio clips embedded in flash and reports timing statistics. No audio output.
 
 ## Features
 
-- Embedded test audio in all four formats (no filesystem or network required)
+- Embedded test audio in all five formats (no filesystem or network required)
 - Per-codec timing with Real-Time Factor (RTF)
 - Runs in a continuous loop for repeated measurements
 - Pre-configured for maximum performance (240 MHz, PSRAM, `-O2`)
@@ -13,13 +13,14 @@ Measures decoding performance for all four supported audio formats (FLAC, MP3, O
 
 Audio source: Beethoven Symphony No. 3 "Eroica", Op. 55, Movement I, Czech National Symphony Orchestra, from the [Musopen Collection](https://musopen.org/) (public domain). 10-second excerpt starting at 1:00, downmixed to 48 kHz mono.
 
-The same source recording is used by the microFLAC, microMP3, and microOpus decode benchmarks.
+The same source recording is used by the microFLAC, microMP3, microOpus, and microVorbis decode benchmarks.
 
 | Format | Bitrate | File Size |
 |--------|---------|-----------|
 | FLAC   | lossless | ~779 KB |
 | MP3    | 128 kbps | ~157 KB |
 | Opus   | 64 kbps  | ~84 KB |
+| Vorbis | q4 VBR (~71 kbps) | ~86 KB |
 | WAV    | PCM 16-bit | ~938 KB |
 
 ## Building and Running
@@ -54,10 +55,11 @@ Decoding ~10s clips, 48 kHz mono, no audio output
 
 --- Iteration 1 ---
   Codec   File size     Decode time  Duration   RTF
-  FLAC    798147 bytes     341.0 ms  10.00 s audio  RTF 0.0341
-  MP3     161256 bytes     479.4 ms  10.06 s audio  RTF 0.0477
-  OPUS     85663 bytes     799.6 ms  10.00 s audio  RTF 0.0800
-  WAV     960264 bytes      69.1 ms  10.00 s audio  RTF 0.0069
+  FLAC    798147 bytes     311.1 ms  10.00 s audio  RTF 0.0311
+  MP3     161256 bytes     479.3 ms  10.00 s audio  RTF 0.0479
+  OPUS     85663 bytes     809.5 ms  10.00 s audio  RTF 0.0810
+  VORBIS   88350 bytes     559.2 ms  10.00 s audio  RTF 0.0559
+  WAV     960264 bytes      59.1 ms  10.00 s audio  RTF 0.0059
 ```
 
 RTF (Real-Time Factor) = decode_time / audio_duration. Lower is better:
@@ -77,7 +79,7 @@ To regenerate the embedded audio headers from a different source file:
 python3 convert_audio.py -i path/to/eroica.flac -s 60 -d 10
 ```
 
-This extracts a 10-second clip starting at 1:00, encodes to all four formats (48 kHz mono), and generates C headers in `src/`.
+This extracts a 10-second clip starting at 1:00, encodes to all five formats (48 kHz mono), and generates C headers in `src/`.
 
 ## File Structure
 
@@ -89,6 +91,7 @@ decode_benchmark/
 │   ├── test_audio_flac.h       # Embedded FLAC data
 │   ├── test_audio_mp3.h        # Embedded MP3 data
 │   ├── test_audio_opus.h       # Embedded Opus data
+│   ├── test_audio_vorbis.h     # Embedded Vorbis data
 │   └── test_audio_wav.h        # Embedded WAV data
 ├── CMakeLists.txt              # ESP-IDF project file
 ├── convert_audio.py            # Audio-to-header conversion script

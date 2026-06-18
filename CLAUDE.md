@@ -32,7 +32,7 @@ include/micro_decoder/   - public headers
 
 src/
   decoder_source.cpp     - thread lifecycle and orchestration
-  audio_decoder.{h,cpp}  - FLAC/MP3/Opus/WAV decode loop
+  audio_decoder.{h,cpp}  - FLAC/MP3/Opus/Vorbis/WAV decode loop
   audio_reader.{h,cpp}   - HTTP → RingBuffer
   ring_buffer.{h,cpp}    - owns storage; wraps SpscRingBuffer
   md_transfer_buffer.{h,cpp} - flat staging buffer with start-pointer + length cursors
@@ -67,6 +67,6 @@ All symbols live in `namespace micro_decoder`.
 
 - Member variables use `this->` prefix
 - Struct/class member ordering: structs → pointers → size_t → smaller integer types → bool
-- Whenever all codecs appear together (enums, switch cases, includes, cmake options, docs), list them in alphabetical order: FLAC, MP3, Opus, WAV
+- Whenever all codecs appear together (enums, switch cases, includes, cmake options, docs), list them in alphabetical order: FLAC, MP3, Opus, Vorbis, WAV
 - Platform-specific code guarded by `#ifdef ESP_PLATFORM` / `#else`
 - Internal headers live in `src/`; only `include/micro_decoder/` is public

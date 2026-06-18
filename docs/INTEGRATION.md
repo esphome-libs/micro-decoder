@@ -1,6 +1,6 @@
 # Integration Guide
 
-This guide describes what you need to implement in order to integrate microDecoder into your application. The library handles HTTP streaming, audio format detection, and decoding (FLAC/MP3/Opus/WAV). You provide the PCM audio output via a listener callback.
+This guide describes what you need to implement in order to integrate microDecoder into your application. The library handles HTTP streaming, audio format detection, and decoding (FLAC/MP3/Opus/Vorbis/WAV). You provide the PCM audio output via a listener callback.
 
 ## Overview
 
@@ -26,7 +26,7 @@ add_subdirectory(path/to/micro-decoder)
 target_link_libraries(my_app PRIVATE micro_decoder)
 ```
 
-The library fetches its codec dependencies (`micro-flac`, `micro-mp3`, `micro-opus`, `micro-wav`) automatically via `FetchContent`. Your system must provide `libcurl` and a C++17 compiler.
+The library fetches its codec dependencies (`micro-flac`, `micro-mp3`, `micro-opus`, `micro-vorbis`, `micro-wav`) automatically via `FetchContent`. Your system must provide `libcurl` and a C++17 compiler.
 
 ### ESP-IDF
 
@@ -47,7 +47,7 @@ idf_component_register(
 
 ## Codec Selection
 
-All four codecs (FLAC, MP3, Opus, WAV) are enabled by default. Disable individual codecs to reduce binary size.
+All five codecs (FLAC, MP3, Opus, Vorbis, WAV) are enabled by default. Disable individual codecs to reduce binary size.
 
 ### Host (CMake options)
 
@@ -62,6 +62,7 @@ cmake -B build -DMICRO_DECODER_CODEC_OPUS=OFF -DMICRO_DECODER_CODEC_WAV=OFF
 | `MICRO_DECODER_CODEC_FLAC` | `ON` |
 | `MICRO_DECODER_CODEC_MP3` | `ON` |
 | `MICRO_DECODER_CODEC_OPUS` | `ON` |
+| `MICRO_DECODER_CODEC_VORBIS` | `ON` |
 | `MICRO_DECODER_CODEC_WAV` | `ON` |
 
 Disabled codecs are not fetched or compiled.
@@ -214,9 +215,25 @@ AudioFileType type = detect_audio_file_type(nullptr, "/sdcard/track.flac");
 
 // From an HTTP response header
 AudioFileType type = detect_audio_file_type("audio/flac", nullptr);
+
+// Ogg is ambiguous: a codecs=opus parameter selects Opus, otherwise Vorbis
+AudioFileType opus = detect_audio_file_type("audio/ogg; codecs=opus", nullptr);  // OPUS
+AudioFileType vorbis = detect_audio_file_type(nullptr, "track.ogg");             // VORBIS
 ```
 
 Returns `AudioFileType::NONE` if the format cannot be determined.
+
+The recognized Content-Types and extensions are:
+
+| Type | Content-Type | Extension |
+|---|---|---|
+| `FLAC` | `audio/flac`, `audio/x-flac` | `.flac` |
+| `MP3` | `audio/mpeg`, `audio/mp3`, `audio/x-mpeg` | `.mp3` |
+| `OPUS` | `audio/opus`, or `audio/ogg` / `application/ogg` whose codecs parameter names opus | `.opus` |
+| `VORBIS` | `audio/vorbis`, or plain `audio/ogg` / `application/ogg` | `.ogg` |
+| `WAV` | `audio/wav`, `audio/x-wav`, `audio/wave` | `.wav` |
+
+Ogg can carry either codec, so a plain `audio/ogg` Content-Type and the `.ogg` extension resolve to Vorbis; Opus requires an explicit signal (`audio/opus`, a `codecs=opus` parameter, or the `.opus` extension). Detection never returns a type whose codec is compiled out; it yields `AudioFileType::NONE` instead.
 
 ## Step 5: Pump Events with loop()
 
@@ -364,7 +381,8 @@ The default `AudioStreamInfo` constructor produces 16-bit, mono, 16000 Hz. The a
 | `NONE` | Unknown or undetected format (always available) |
 | `FLAC` | FLAC (only when `MICRO_DECODER_CODEC_FLAC` is enabled) |
 | `MP3` | MP3 (only when `MICRO_DECODER_CODEC_MP3` is enabled) |
-| `OPUS` | Opus/OGG (only when `MICRO_DECODER_CODEC_OPUS` is enabled) |
+| `OPUS` | Opus in Ogg (only when `MICRO_DECODER_CODEC_OPUS` is enabled) |
+| `VORBIS` | Vorbis in Ogg (only when `MICRO_DECODER_CODEC_VORBIS` is enabled) |
 | `WAV` | WAV (only when `MICRO_DECODER_CODEC_WAV` is enabled) |
 
 Use `audio_file_type_to_string(AudioFileType)` to get a human-readable name.

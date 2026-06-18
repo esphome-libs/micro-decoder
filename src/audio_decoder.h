@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /// @file audio_decoder.h
-/// @brief AudioDecoder: decodes FLAC/MP3/Opus/WAV audio and delivers PCM via callback
+/// @brief AudioDecoder: decodes FLAC/MP3/Opus/Vorbis/WAV audio and delivers PCM via callback
 
 #pragma once
 
@@ -39,6 +39,11 @@
 // micro-opus
 #ifdef MICRO_DECODER_CODEC_OPUS
 #include <micro_opus/ogg_opus_decoder.h>
+#endif
+
+// micro-vorbis
+#ifdef MICRO_DECODER_CODEC_VORBIS
+#include <micro_vorbis/ogg_vorbis_decoder.h>
 #endif
 
 // micro-wav
@@ -157,6 +162,10 @@ private:
     /// @brief Decodes one iteration of Opus data
     FileDecoderState decode_opus(const uint8_t* data, size_t len, size_t& bytes_consumed);
 #endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+    /// @brief Decodes one iteration of Vorbis data
+    FileDecoderState decode_vorbis(const uint8_t* data, size_t len, size_t& bytes_consumed);
+#endif
 #ifdef MICRO_DECODER_CODEC_WAV
     /// @brief Decodes one iteration of WAV data
     FileDecoderState decode_wav(const uint8_t* data, size_t len, size_t& bytes_consumed);
@@ -189,6 +198,9 @@ private:
     std::unique_ptr<micro_opus::OggOpusDecoder> opus_decoder_;
 #endif
     RingBuffer* source_ring_buffer_{nullptr};
+#ifdef MICRO_DECODER_CODEC_VORBIS
+    std::unique_ptr<micro_vorbis::OggVorbisDecoder> vorbis_decoder_;
+#endif
 #ifdef MICRO_DECODER_CODEC_WAV
     std::unique_ptr<micro_wav::WAVDecoder> wav_decoder_;
 #endif
