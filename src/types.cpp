@@ -16,6 +16,7 @@
 
 #include "platform/logging.h"
 
+#include <cctype>
 #include <cstring>
 
 namespace micro_decoder {
@@ -47,6 +48,22 @@ static AudioFileType type_from_content_type(const char* content_type) {
     [[maybe_unused]] auto contains = [&](const char* needle) -> bool {
         return strcasestr(content_type, needle) != nullptr;
     };
+    // Case-insensitive whole-token match (bounded by non-alphanumeric characters).
+    // Used for bare codec tokens like "opus" so codecs=notopus / opusenc don't match.
+    [[maybe_unused]] auto contains_token = [&](const char* needle) -> bool {
+        size_t needle_len = strlen(needle);
+        const char* pos = content_type;
+        while ((pos = strcasestr(pos, needle)) != nullptr) {
+            bool left_ok =
+                (pos == content_type) || (isalnum(static_cast<unsigned char>(pos[-1])) == 0);
+            bool right_ok = isalnum(static_cast<unsigned char>(pos[needle_len])) == 0;
+            if (left_ok && right_ok) {
+                return true;
+            }
+            pos += 1;
+        }
+        return false;
+    };
 
 #ifdef MICRO_DECODER_CODEC_FLAC
     if (contains("audio/flac") || contains("audio/x-flac")) {
@@ -63,7 +80,7 @@ static AudioFileType type_from_content_type(const char* content_type) {
     // audio/ogg;codecs=opus) is Opus; any other Ogg type is Vorbis. A type whose codec
     // is compiled out returns NONE rather than being reclassified as the other codec.
     if (contains("audio/opus") ||
-        ((contains("audio/ogg") || contains("application/ogg")) && contains("opus"))) {
+        ((contains("audio/ogg") || contains("application/ogg")) && contains_token("opus"))) {
 #ifdef MICRO_DECODER_CODEC_OPUS
         return AudioFileType::OPUS;
 #else
