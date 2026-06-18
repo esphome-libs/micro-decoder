@@ -45,10 +45,11 @@ function(micro_decoder_configure_host TARGET_LIB SOURCE_DIR)
     # ESP build path. Cache variables are global regardless of function scope,
     # so -D overrides from the command line work as expected.
     # =========================================================================
-    option(MICRO_DECODER_CODEC_FLAC "Enable FLAC codec" ON)
-    option(MICRO_DECODER_CODEC_MP3  "Enable MP3 codec"  ON)
-    option(MICRO_DECODER_CODEC_OPUS "Enable Opus codec" ON)
-    option(MICRO_DECODER_CODEC_WAV  "Enable WAV codec"  ON)
+    option(MICRO_DECODER_CODEC_FLAC   "Enable FLAC codec"   ON)
+    option(MICRO_DECODER_CODEC_MP3    "Enable MP3 codec"    ON)
+    option(MICRO_DECODER_CODEC_OPUS   "Enable Opus codec"   ON)
+    option(MICRO_DECODER_CODEC_VORBIS "Enable Vorbis codec" ON)
+    option(MICRO_DECODER_CODEC_WAV    "Enable WAV codec"    ON)
 
     if(MICRO_DECODER_CODEC_FLAC)
         target_compile_definitions(${TARGET_LIB} PUBLIC MICRO_DECODER_CODEC_FLAC=1)
@@ -58,6 +59,9 @@ function(micro_decoder_configure_host TARGET_LIB SOURCE_DIR)
     endif()
     if(MICRO_DECODER_CODEC_OPUS)
         target_compile_definitions(${TARGET_LIB} PUBLIC MICRO_DECODER_CODEC_OPUS=1)
+    endif()
+    if(MICRO_DECODER_CODEC_VORBIS)
+        target_compile_definitions(${TARGET_LIB} PUBLIC MICRO_DECODER_CODEC_VORBIS=1)
     endif()
     if(MICRO_DECODER_CODEC_WAV)
         target_compile_definitions(${TARGET_LIB} PUBLIC MICRO_DECODER_CODEC_WAV=1)
@@ -103,6 +107,19 @@ function(micro_decoder_configure_host TARGET_LIB SOURCE_DIR)
         )
         FetchContent_MakeAvailable(micro_opus)
         target_link_libraries(${TARGET_LIB} PRIVATE micro_opus)
+    endif()
+
+    # micro-vorbis
+    if(MICRO_DECODER_CODEC_VORBIS)
+        # GIT_SHALLOW omitted: micro-vorbis uses submodules, which are unreliable with shallow clones
+        FetchContent_Declare(
+            micro_vorbis
+            GIT_REPOSITORY https://github.com/esphome-libs/micro-vorbis.git
+            GIT_TAG        v0.1.0
+            GIT_SUBMODULES "lib/micro-ogg-demuxer"
+        )
+        FetchContent_MakeAvailable(micro_vorbis)
+        target_link_libraries(${TARGET_LIB} PRIVATE micro_vorbis)
     endif()
 
     # micro-wav

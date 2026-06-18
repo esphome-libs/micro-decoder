@@ -97,6 +97,13 @@ bool AudioDecoder::start(AudioFileType file_type) {
             break;
 #endif
 
+#ifdef MICRO_DECODER_CODEC_VORBIS
+        case AudioFileType::VORBIS:
+            this->vorbis_decoder_ = std::make_unique<micro_vorbis::OggVorbisDecoder>();
+            this->free_buffer_required_ = this->output_buffer_.capacity();
+            break;
+#endif
+
 #ifdef MICRO_DECODER_CODEC_WAV
         case AudioFileType::WAV:
             this->wav_decoder_ = std::make_unique<micro_wav::WAVDecoder>();
@@ -215,6 +222,11 @@ AudioDecoderState AudioDecoder::decode(bool stop_gracefully, DecoderListener* li
 #ifdef MICRO_DECODER_CODEC_OPUS
                 case AudioFileType::OPUS:
                     state = this->decode_opus(input_data, input_len, bytes_consumed);
+                    break;
+#endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+                case AudioFileType::VORBIS:
+                    state = this->decode_vorbis(input_data, input_len, bytes_consumed);
                     break;
 #endif
 #ifdef MICRO_DECODER_CODEC_WAV
@@ -410,6 +422,59 @@ AudioDecoder::FileDecoderState AudioDecoder::decode_opus(const uint8_t* data, si
     return FileDecoderState::MORE_TO_PROCESS;
 }
 #endif  // MICRO_DECODER_CODEC_OPUS
+
+// ============================================================================
+// Vorbis decode
+// ============================================================================
+
+#ifdef MICRO_DECODER_CODEC_VORBIS
+AudioDecoder::FileDecoderState AudioDecoder::decode_vorbis(const uint8_t* data, size_t len,
+                                                           size_t& bytes_consumed) {
+    size_t codec_consumed = 0;
+    size_t bytes_decoded = 0;
+
+    micro_vorbis::OggVorbisResult result =
+        this->vorbis_decoder_->decode(data, len, this->output_buffer_.get_buffer_end(),
+                                      this->output_buffer_.free(), codec_consumed, bytes_decoded);
+
+    bytes_consumed = codec_consumed;
+
+    if (result == micro_vorbis::OGG_VORBIS_DECODER_SUCCESS) {
+        // microVorbis reports bytes_decoded in bytes (all channels), not samples.
+        if (bytes_decoded > 0 && this->stream_info_.has_value()) {
+            this->output_buffer_.increase_length(bytes_decoded);
+        }
+    } else if (result == micro_vorbis::OGG_VORBIS_DECODER_STREAM_INFO_READY) {
+        const auto& info = this->vorbis_decoder_->get_pcm_format();
+        this->stream_info_ =
+            AudioStreamInfo(static_cast<uint8_t>(info.bits_per_sample()),
+                            static_cast<uint8_t>(info.num_channels()), info.sample_rate());
+
+        this->free_buffer_required_ = info.max_output_bytes();
+        if (this->output_buffer_.capacity() < this->free_buffer_required_) {
+            if (!this->output_buffer_.reallocate(this->free_buffer_required_)) {
+                return FileDecoderState::FAILED;
+            }
+        }
+    } else if (result == micro_vorbis::OGG_VORBIS_DECODER_END_OF_STREAM) {
+        return FileDecoderState::END_OF_FILE;
+    } else if (result == micro_vorbis::OGG_VORBIS_DECODER_NEED_MORE_DATA) {
+        return FileDecoderState::MORE_TO_PROCESS;
+    } else if (result == micro_vorbis::OGG_VORBIS_DECODER_ERROR_OUTPUT_BUFFER_TOO_SMALL) {
+        this->free_buffer_required_ = this->vorbis_decoder_->get_required_output_bytes();
+        if (this->output_buffer_.capacity() < this->free_buffer_required_) {
+            if (!this->output_buffer_.reallocate(this->free_buffer_required_)) {
+                return FileDecoderState::FAILED;
+            }
+        }
+    } else {
+        MD_LOGE(TAG, "Vorbis decoder error: %d", static_cast<int>(result));
+        return FileDecoderState::POTENTIALLY_FAILED;
+    }
+
+    return FileDecoderState::MORE_TO_PROCESS;
+}
+#endif  // MICRO_DECODER_CODEC_VORBIS
 
 // ============================================================================
 // WAV decode

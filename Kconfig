@@ -16,7 +16,13 @@ menu "Micro Decoder"
         bool "Enable Opus codec support"
         default y
         help
-            Enable Opus/OGG audio decoding via micro-opus.
+            Enable Opus-in-Ogg audio decoding via micro-opus.
+
+    config MICRO_DECODER_CODEC_VORBIS
+        bool "Enable Vorbis codec support"
+        default y
+        help
+            Enable Ogg Vorbis audio decoding via micro-vorbis.
 
     config MICRO_DECODER_CODEC_WAV
         bool "Enable WAV codec support"

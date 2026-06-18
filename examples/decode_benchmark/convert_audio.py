@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Convert an audio file to C header files for all four codecs.
+Convert an audio file to C header files for all five codecs.
 
-Extracts a clip, converts to 48 kHz mono, and encodes to FLAC, MP3, Opus, and WAV.
-Each encoded file is then converted to a C header with an embedded byte array.
+Extracts a clip, converts to 48 kHz mono, and encodes to FLAC, MP3, Opus, Vorbis,
+and WAV. Each encoded file is then converted to a C header with an embedded byte array.
 
 Requirements:
     - ffmpeg (command-line tool)
@@ -39,6 +39,12 @@ CODECS = [
         "ext": "ogg",
         "variable": "test_audio_opus_data",
         "ffmpeg_args": ["-c:a", "libopus", "-b:a", "64k"],
+    },
+    {
+        "name": "vorbis",
+        "ext": "ogg",
+        "variable": "test_audio_vorbis_data",
+        "ffmpeg_args": ["-c:a", "libvorbis", "-q:a", "4"],
     },
     {
         "name": "wav",
@@ -100,7 +106,7 @@ def binary_to_header(input_path: str, output_path: str, variable_name: str) -> N
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert audio to C headers for all four codecs"
+        description="Convert audio to C headers for all five codecs"
     )
     parser.add_argument("-i", "--input", required=True, help="Input audio file")
     parser.add_argument(

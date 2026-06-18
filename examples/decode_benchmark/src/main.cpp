@@ -14,7 +14,7 @@
 
 /* ESP32 Decode Benchmark
  *
- * Decodes ~10-second audio clips in all four supported formats (FLAC, MP3, Opus, WAV)
+ * Decodes ~10-second audio clips in all five supported formats (FLAC, MP3, Opus, Vorbis, WAV)
  * using DecoderSource::play_buffer() and reports timing statistics.
  *
  * Audio is discarded after decoding (no audio output).
@@ -31,6 +31,7 @@
 #include "test_audio_flac.h"
 #include "test_audio_mp3.h"
 #include "test_audio_opus.h"
+#include "test_audio_vorbis.h"
 #include "test_audio_wav.h"
 
 #include <cinttypes>
@@ -52,6 +53,7 @@ static constexpr AudioClip AUDIO_CLIPS[] = {
     {"FLAC", test_audio_flac_data, test_audio_flac_data_len, AudioFileType::FLAC},
     {"MP3", test_audio_mp3_data, test_audio_mp3_data_len, AudioFileType::MP3},
     {"OPUS", test_audio_opus_data, test_audio_opus_data_len, AudioFileType::OPUS},
+    {"VORBIS", test_audio_vorbis_data, test_audio_vorbis_data_len, AudioFileType::VORBIS},
     {"WAV", test_audio_wav_data, test_audio_wav_data_len, AudioFileType::WAV},
 };
 static constexpr int NUM_CLIPS = static_cast<int>(sizeof(AUDIO_CLIPS) / sizeof(AUDIO_CLIPS[0]));

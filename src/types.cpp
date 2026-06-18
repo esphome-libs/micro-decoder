@@ -58,11 +58,25 @@ static AudioFileType type_from_content_type(const char* content_type) {
         return AudioFileType::MP3;
     }
 #endif
+    // Ogg can carry Opus or Vorbis. The classification is the same in every build:
+    // an explicit opus signal ("audio/opus" or an Ogg type naming opus, e.g.
+    // audio/ogg;codecs=opus) is Opus; any other Ogg type is Vorbis. A type whose codec
+    // is compiled out returns NONE rather than being reclassified as the other codec.
+    if (contains("audio/opus") ||
+        ((contains("audio/ogg") || contains("application/ogg")) && contains("opus"))) {
 #ifdef MICRO_DECODER_CODEC_OPUS
-    if (contains("audio/ogg") || contains("audio/opus") || contains("application/ogg")) {
         return AudioFileType::OPUS;
-    }
+#else
+        return AudioFileType::NONE;
 #endif
+    }
+    if (contains("audio/vorbis") || contains("audio/ogg") || contains("application/ogg")) {
+#ifdef MICRO_DECODER_CODEC_VORBIS
+        return AudioFileType::VORBIS;
+#else
+        return AudioFileType::NONE;
+#endif
+    }
 #ifdef MICRO_DECODER_CODEC_WAV
     if (contains("audio/wav") || contains("audio/x-wav") || contains("audio/wave")) {
         return AudioFileType::WAV;
@@ -103,11 +117,13 @@ static AudioFileType type_from_url_extension(const char* url) {
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_OPUS
-    if (ext_len == 3 && strncasecmp(ext, "ogg", 3) == 0) {
-        return AudioFileType::OPUS;
-    }
     if (ext_len == 4 && strncasecmp(ext, "opus", 4) == 0) {
         return AudioFileType::OPUS;
+    }
+#endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+    if (ext_len == 3 && strncasecmp(ext, "ogg", 3) == 0) {
+        return AudioFileType::VORBIS;
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_WAV
@@ -132,6 +148,10 @@ const char* audio_file_type_to_string(AudioFileType file_type) {
 #ifdef MICRO_DECODER_CODEC_OPUS
         case AudioFileType::OPUS:
             return "OPUS";
+#endif
+#ifdef MICRO_DECODER_CODEC_VORBIS
+        case AudioFileType::VORBIS:
+            return "VORBIS";
 #endif
 #ifdef MICRO_DECODER_CODEC_WAV
         case AudioFileType::WAV:
