@@ -172,6 +172,10 @@ int main(int argc, char* argv[]) try {
     }
 
     fprintf(stderr, "\nStopping...\n");
+    if (running.load()) {
+        // Playback ended on its own: let the buffered tail play out before stopping
+        sink.drain();
+    }
     decoder.stop();
     sink.stop();
 

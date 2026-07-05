@@ -143,6 +143,11 @@ public:
     /// @param state New decoder state.
     void on_state_change(DecoderState state) override;
 
+    /// @brief Block until the output device has consumed all buffered audio.
+    /// Call after playback finishes naturally so the buffered tail plays out
+    /// before stop(); returns immediately if no stream is open.
+    void drain();
+
     /// @brief Stop playback and clear the ring buffer.
     void stop();
 

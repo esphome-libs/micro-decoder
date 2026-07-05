@@ -226,6 +226,19 @@ void PortAudioSink::close_stream() {
     this->ring_buffer_.reset();
 }
 
+void PortAudioSink::drain() {
+    static constexpr long DRAIN_POLL_MS = 10;
+    if (this->stream_ == nullptr) {
+        return;
+    }
+    // Wait for the PortAudio callback to pull everything out of the ring buffer.
+    // Pa_StopStream() in close_stream() then waits for the device to finish
+    // playing the buffers already handed to the callback.
+    while (this->ring_buffer_.available() > 0 && Pa_IsStreamActive(this->stream_) == 1) {
+        Pa_Sleep(DRAIN_POLL_MS);
+    }
+}
+
 void PortAudioSink::stop() {
     this->close_stream();
 }
