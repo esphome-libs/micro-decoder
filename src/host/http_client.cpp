@@ -360,8 +360,11 @@ static size_t curl_write_callback(char* ptr, size_t size, size_t nmemb, void* us
 static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, void* userdata) {
     auto* self = static_cast<CurlHttpClient*>(userdata);
     size_t total = size * nitems;
-    // Parse status code from the HTTP status line
+    // Parse status code from the HTTP status line. A new status line begins a new
+    // response (redirect hop or 1xx continuation), so reset per-response state to
+    // keep a redirect hop's headers from leaking into the final response.
     if (total > 5 && std::strncmp(buffer, "HTTP/", 5) == 0) {
+        self->response_ = HttpResponse{};
         const char* sp = static_cast<const char*>(std::memchr(buffer, ' ', total));
         if (sp != nullptr) {
             ++sp;
@@ -390,10 +393,21 @@ static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, voi
         }
     }
 
-    // Blank line signals end of headers
+    // Blank line signals end of headers. Only the final response counts: for 1xx
+    // (informational) and 3xx (redirect, followed via CURLOPT_FOLLOWLOCATION) curl
+    // continues with another response, so keep waiting for its headers.
     if ((total == 2 && buffer[0] == '\r' && buffer[1] == '\n') ||
         (total == 1 && buffer[0] == '\n')) {
-        self->headers_ready_ = true;
+        static constexpr int HTTP_INFORMATIONAL_MIN = 100;
+        static constexpr int HTTP_INFORMATIONAL_END = 200;
+        static constexpr int HTTP_REDIRECT_MIN = 300;
+        static constexpr int HTTP_REDIRECT_END = 400;
+        int code = self->response_.status_code;
+        bool continues = (code >= HTTP_INFORMATIONAL_MIN && code < HTTP_INFORMATIONAL_END) ||
+                         (code >= HTTP_REDIRECT_MIN && code < HTTP_REDIRECT_END);
+        if (!continues) {
+            self->headers_ready_ = true;
+        }
     }
 
     return total;
