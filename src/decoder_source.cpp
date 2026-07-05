@@ -40,10 +40,14 @@ static constexpr uint32_t FLAG_COMMAND_STOP = (1U << 3);
 static constexpr uint32_t FLAG_DECODER_STARTED = (1U << 4);
 static constexpr uint32_t FLAG_DECODER_FINISHED = (1U << 5);
 static constexpr uint32_t FLAG_DECODER_FAILED = (1U << 6);
+// Set when the URL-path decoder thread exits for any reason. Unlike
+// FLAG_DECODER_FAILED (consumed by pump_events on the user's thread), this flag
+// stays set until the next play_*()/stop(), so the reader cannot miss it.
+static constexpr uint32_t FLAG_DECODER_EXITED = (1U << 7);
 
-static constexpr uint32_t ALL_FLAGS = FLAG_READER_READY | FLAG_READER_FINISHED | FLAG_READER_ERROR |
-                                      FLAG_COMMAND_STOP | FLAG_DECODER_STARTED |
-                                      FLAG_DECODER_FINISHED | FLAG_DECODER_FAILED;
+static constexpr uint32_t ALL_FLAGS =
+    FLAG_READER_READY | FLAG_READER_FINISHED | FLAG_READER_ERROR | FLAG_COMMAND_STOP |
+    FLAG_DECODER_STARTED | FLAG_DECODER_FINISHED | FLAG_DECODER_FAILED | FLAG_DECODER_EXITED;
 
 // ============================================================================
 // DecoderSource::Impl
@@ -195,7 +199,7 @@ struct DecoderSource::Impl {
     /// @return true once a stop has been requested
     static bool reader_cancelled(void* arg) {
         auto* impl = static_cast<Impl*>(arg);
-        return (impl->event_flags.get() & FLAG_COMMAND_STOP) != 0;
+        return (impl->event_flags.get() & (FLAG_COMMAND_STOP | FLAG_DECODER_EXITED)) != 0;
     }
 
     /// @brief Reader thread entry point that streams from the URL in this->url
@@ -219,8 +223,10 @@ struct DecoderSource::Impl {
         this->event_flags.set(FLAG_READER_READY);
 
         while (true) {
-            // Check for stop command
-            if (this->event_flags.get() & FLAG_COMMAND_STOP) {
+            // Stop when commanded, or when the decoder thread has exited (e.g. after a
+            // decode failure): nothing drains the ring buffer once the decoder is gone,
+            // so continuing would download the rest of the stream for nothing.
+            if (this->event_flags.get() & (FLAG_COMMAND_STOP | FLAG_DECODER_EXITED)) {
                 break;
             }
 
@@ -238,8 +244,8 @@ struct DecoderSource::Impl {
 
             if (rs == AudioReaderState::IDLE) {
                 // No data available from HTTP; yield to avoid a tight spin.
-                // Wakes immediately on a stop command.
-                this->event_flags.wait(FLAG_COMMAND_STOP, false, false,
+                // Wakes immediately on a stop command or decoder exit.
+                this->event_flags.wait(FLAG_COMMAND_STOP | FLAG_DECODER_EXITED, false, false,
                                        this->config.reader_write_timeout_ms);
             }
         }
@@ -269,6 +275,13 @@ struct DecoderSource::Impl {
 
     /// @brief Decoder thread entry point for URL-based playback
     void decoder_thread_func_url() {
+        this->decode_url_stream();
+        // Signal the reader that the decoder is gone, whatever the exit reason
+        this->event_flags.set(FLAG_DECODER_EXITED);
+    }
+
+    /// @brief Waits for the reader, then runs the decode loop for URL-based playback
+    void decode_url_stream() {
         // Wait for the reader to signal file type or error. http_timeout_ms bounds one connect
         // and header-fetch cycle, and the reader spends up to HTTP_MAX_CONNECT_ATTEMPTS of
         // them, so waiting for a single cycle would give up partway through a legitimate
