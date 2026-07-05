@@ -71,7 +71,10 @@ static AudioFileType type_from_content_type(const char* content_type) {
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_MP3
-    if (contains("audio/mpeg") || contains("audio/mp3") || contains("audio/x-mpeg")) {
+    // Token-bounded so the M3U playlist types audio/mpegurl and audio/x-mpegurl
+    // do not match as MP3
+    if (contains_token("audio/mpeg") || contains_token("audio/mp3") ||
+        contains_token("audio/x-mpeg")) {
         return AudioFileType::MP3;
     }
 #endif
