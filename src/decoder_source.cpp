@@ -418,6 +418,11 @@ void DecoderSource::set_listener(DecoderListener* listener) {
 }
 
 bool DecoderSource::play_url(const std::string& url) {
+    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
+        MD_LOGE(TAG, "No listener set; call set_listener() before play_url()");
+        return false;
+    }
+
     if (!this->impl_->initialized_) {
         MD_LOGE(TAG, "Not initialized (event flags allocation failed)");
         this->impl_->store_state(DecoderState::FAILED);
@@ -479,6 +484,11 @@ bool DecoderSource::play_buffer(const uint8_t* data, size_t length, AudioFileTyp
 
     if (type == AudioFileType::NONE) {
         MD_LOGE(TAG, "Unsupported audio file type");
+        return false;
+    }
+
+    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
+        MD_LOGE(TAG, "No listener set; call set_listener() before play_buffer()");
         return false;
     }
 
