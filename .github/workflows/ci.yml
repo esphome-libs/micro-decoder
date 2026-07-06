@@ -63,6 +63,32 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: tests/build/_deps
+          key: fetchcontent-tests-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Configure CMake
+        run: cmake -B tests/build -DENABLE_SANITIZERS=ON -DENABLE_WERROR=ON tests
+
+      - name: Build tests
+        run: cmake --build tests/build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir tests/build --output-on-failure
+
   platformio:
     name: PlatformIO Build
     runs-on: ubuntu-latest
