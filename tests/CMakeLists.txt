@@ -10,8 +10,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Option to enable sanitizers for debugging
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
+# Option to enable ThreadSanitizer. The reader, decoder, and caller threads hand off through
+# the ring buffer and event flags, which is exactly the kind of cross-thread path ASan and
+# UBSan cannot see.
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
 # Treat warnings as errors (also picked up by the micro_decoder library build below)
 option(ENABLE_WERROR "Treat warnings as errors" OFF)
+
+if(ENABLE_SANITIZERS AND ENABLE_TSAN)
+    message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_TSAN cannot be combined")
+endif()
 
 if(ENABLE_SANITIZERS)
     message(STATUS "Building with AddressSanitizer and UndefinedBehaviorSanitizer")
@@ -22,6 +31,14 @@ if(ENABLE_SANITIZERS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SANITIZER_FLAGS}")
+endif()
+
+if(ENABLE_TSAN)
+    message(STATUS "Building with ThreadSanitizer")
+    set(TSAN_FLAGS "-fsanitize=thread -fno-omit-frame-pointer -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TSAN_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TSAN_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${TSAN_FLAGS}")
 endif()
 
 # The tests drive the library directly; skip the host examples so a PortAudio
@@ -41,6 +58,13 @@ target_compile_options(test_micro_decoder PRIVATE
     -Wextra
     -Wshadow
     -Wimplicit-fallthrough
+    # Any function not declared in a header must be static; keeps
+    # -Wunused-function able to see dead internal functions. Clang and GCC
+    # spell the C++ variant of this check differently.
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wmissing-prototypes>
+    $<$<CXX_COMPILER_ID:GNU>:-Wmissing-declarations>
+    # Require static_cast/reinterpret_cast over C-style casts
+    -Wold-style-cast
     $<$<BOOL:${ENABLE_WERROR}>:-Werror>
 )
 

@@ -96,7 +96,15 @@ The orchestration layer is covered by a ctest suite (`tests/`): file-type detect
 ```bash
 cd tests
 cmake -DENABLE_SANITIZERS=ON -B build && cmake --build build
-(cd build && ctest --output-on-failure)
+ctest --test-dir build --output-on-failure
+```
+
+The reader, decoder, and caller threads hand off through the ring buffer and event flags, so the suite is also run under ThreadSanitizer, which catches races AddressSanitizer and UBSan cannot see. `ENABLE_TSAN` is mutually exclusive with `ENABLE_SANITIZERS`:
+
+```bash
+cd tests
+cmake -DENABLE_TSAN=ON -B build-tsan && cmake --build build-tsan
+ctest --test-dir build-tsan --output-on-failure
 ```
 
 ## License
