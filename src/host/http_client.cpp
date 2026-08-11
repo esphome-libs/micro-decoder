@@ -170,6 +170,10 @@ public:
         return true;
     }
 
+    /// @brief No-op; read() drives curl without blocking and always returns promptly
+    /// @param timeout_ms Maximum time a single read() may block, in milliseconds (unused)
+    void set_read_timeout_ms(uint32_t /*timeout_ms*/) override {}
+
     /// @brief Returns the HTTP response metadata captured during the header callback
     /// @note Valid after a successful open()
     /// @return HttpResponse with the HTTP status code and Content-Type string

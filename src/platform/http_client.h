@@ -69,6 +69,14 @@ public:
     virtual bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
                       const std::string& user_agent, const std::string& ca_certificate) = 0;
 
+    /// @brief Lowers the blocking time of a single read() once the body is streaming
+    /// The connect timeout passed to open() is usually far longer than a caller wants to
+    /// wait to notice a stop request, since read() blocks for the full timeout when a
+    /// server sends nothing. Call this after a successful open() to bound that wait.
+    /// @note No-op where read() does not block.
+    /// @param timeout_ms Maximum time a single read() may block, in milliseconds
+    virtual void set_read_timeout_ms(uint32_t timeout_ms) = 0;
+
     /// @brief Returns response metadata (status code, Content-Type header)
     /// @note Valid after a successful open() and before close()
     /// @return Reference to the HttpResponse with the HTTP status code and Content-Type string

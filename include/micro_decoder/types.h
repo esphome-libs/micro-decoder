@@ -261,8 +261,17 @@ struct DecoderConfig {
     /// (AudioDecoder) in bytes. The decoder may reallocate its copy larger if needed.
     size_t transfer_buffer_size{8192};  // NOLINT(readability-magic-numbers)
 
-    /// @brief HTTP connection/read timeout in milliseconds
+    /// @brief HTTP connection timeout in milliseconds
+    /// Applies while connecting and fetching headers. Body reads use
+    /// http_read_timeout_ms instead.
     uint32_t http_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
+
+    /// @brief Maximum time a single HTTP body read may block, in milliseconds (ESP-IDF only)
+    /// Bounds how long stop() waits for the reader thread, since the reader can only
+    /// observe a stop request between reads. Keep it well below http_timeout_ms: a server
+    /// that accepts the connection and then goes quiet would otherwise stall stop() -- and
+    /// any play_url() that calls it -- for the full connection timeout.
+    uint32_t http_read_timeout_ms{250};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time to block in on_audio_write() per call (milliseconds)
     uint32_t audio_write_timeout_ms{25};  // NOLINT(readability-magic-numbers)

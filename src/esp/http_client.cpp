@@ -177,6 +177,15 @@ public:
         return true;
     }
 
+    /// @brief Lowers the socket timeout now that headers are done and the body is streaming
+    /// @param timeout_ms Maximum time a single read() may block, in milliseconds
+    void set_read_timeout_ms(uint32_t timeout_ms) override {
+        if (this->client_ == nullptr) {
+            return;
+        }
+        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(timeout_ms));
+    }
+
     /// @brief Returns the HTTP response metadata captured during the event callback
     /// @note Valid after a successful open()
     /// @return HttpResponse with the HTTP status code and Content-Type string

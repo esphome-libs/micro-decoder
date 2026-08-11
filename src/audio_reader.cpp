@@ -29,11 +29,13 @@ static constexpr const char* TAG = "micro_decoder.audio_reader";
 // ============================================================================
 
 AudioReader::AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
-                         uint32_t write_timeout_ms, size_t http_rx_buffer_size,
-                         std::string user_agent, std::string ca_certificate)
+                         uint32_t http_read_timeout_ms, uint32_t write_timeout_ms,
+                         size_t http_rx_buffer_size, std::string user_agent,
+                         std::string ca_certificate)
     : user_agent_(std::move(user_agent)),
       ca_certificate_(std::move(ca_certificate)),
       http_rx_buffer_size_(http_rx_buffer_size),
+      http_read_timeout_ms_(http_read_timeout_ms),
       http_timeout_ms_(http_timeout_ms),
       write_timeout_ms_(write_timeout_ms),
       allocation_ok_(this->transfer_buffer_.allocate(transfer_buffer_size)) {}
@@ -58,6 +60,11 @@ bool AudioReader::start_url(const std::string& url) {
         this->client_.reset();
         return false;
     }
+
+    // Headers are done; shorten the socket timeout so a silent server cannot hold a single
+    // read() -- and with it the reader thread's response to a stop request -- for the full
+    // connect timeout
+    this->client_->set_read_timeout_ms(this->http_read_timeout_ms_);
 
     const HttpResponse& resp = this->client_->response_info();
 
