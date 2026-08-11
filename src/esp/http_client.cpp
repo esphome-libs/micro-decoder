@@ -110,34 +110,23 @@ public:
             return false;
         }
 
+        // ESP_ERR_HTTP_EAGAIN means the read timed out with the headers still incomplete.
+        // The connection and the parser state both survive it, so retry on the same client.
+        // Reconnecting instead would spend a socket per attempt, and every socket closed
+        // that way holds one of the few available slots in TIME_WAIT afterwards.
         int64_t header_len = esp_http_client_fetch_headers(this->client_);
-        uint8_t attempts = 0;
-        while (header_len < 0 && attempts < MAX_HEADER_ATTEMPTS) {
-            if (header_len != -ESP_ERR_HTTP_EAGAIN) {
-                MD_LOGE(TAG, "Failed to fetch headers");
-                this->cleanup();
-                return false;
-            }
-            this->cleanup();
-            this->response_ = HttpResponse{};
-            // cfg is unchanged across retries; cert_pem / crt_bundle_attach persist.
-            this->client_ = esp_http_client_init(&cfg);
-            if (this->client_ == nullptr) {
-                MD_LOGE(TAG, "esp_http_client_init failed in retry loop");
-                return false;
-            }
-            esp_err_t retry_err = esp_http_client_open(this->client_, 0);
-            if (retry_err != ESP_OK) {
-                MD_LOGE(TAG, "Failed to open URL in retry: %s", esp_err_to_name(retry_err));
-                this->cleanup();
-                return false;
-            }
+        uint8_t attempts = 1;
+        while (header_len == -ESP_ERR_HTTP_EAGAIN && attempts < MAX_HEADER_ATTEMPTS) {
             header_len = esp_http_client_fetch_headers(this->client_);
             ++attempts;
         }
 
         if (header_len < 0) {
-            MD_LOGE(TAG, "Failed to fetch headers after %u attempts", attempts);
+            if (header_len == -ESP_ERR_HTTP_EAGAIN) {
+                MD_LOGE(TAG, "Timed out fetching headers after %u attempts", attempts);
+            } else {
+                MD_LOGE(TAG, "Failed to fetch headers");
+            }
             this->cleanup();
             return false;
         }
