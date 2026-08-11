@@ -91,6 +91,7 @@ public:
         this->buf_read_ = 0;
 
         this->headers_ready_ = false;
+        this->location_seen_ = false;
         this->transfer_done_ = false;
         this->error_ = false;
         this->cancelled_ = false;
@@ -272,6 +273,7 @@ public:
         this->buf_write_ = 0;
         this->buf_read_ = 0;
         this->headers_ready_ = false;
+        this->location_seen_ = false;
         this->transfer_done_ = false;
         this->error_ = false;
         this->cancelled_ = false;
@@ -329,6 +331,7 @@ private:
     bool cancelled_{false};
     bool error_{false};
     bool headers_ready_{false};
+    bool location_seen_{false};
     bool paused_{false};
     bool transfer_done_{false};
 };
@@ -365,6 +368,7 @@ static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, voi
     // keep a redirect hop's headers from leaking into the final response.
     if (total > 5 && std::strncmp(buffer, "HTTP/", 5) == 0) {
         self->response_ = HttpResponse{};
+        self->location_seen_ = false;
         const char* sp = static_cast<const char*>(std::memchr(buffer, ' ', total));
         if (sp != nullptr) {
             ++sp;
@@ -393,9 +397,18 @@ static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, voi
         }
     }
 
+    // Note whether this response carries a Location: curl only follows a 3xx that has one
+    static constexpr char LOC_PREFIX[] = "location:";
+    static constexpr size_t LOC_PREFIX_LEN = sizeof(LOC_PREFIX) - 1;
+    if (total > LOC_PREFIX_LEN && strncasecmp(buffer, LOC_PREFIX, LOC_PREFIX_LEN) == 0) {
+        self->location_seen_ = true;
+    }
+
     // Blank line signals end of headers. Only the final response counts: for 1xx
-    // (informational) and 3xx (redirect, followed via CURLOPT_FOLLOWLOCATION) curl
-    // continues with another response, so keep waiting for its headers.
+    // (informational) and for a 3xx carrying a Location (followed via
+    // CURLOPT_FOLLOWLOCATION) curl continues with another response, so keep waiting
+    // for its headers. A 3xx without a Location is nothing curl can follow, so it is
+    // the final response and must not stall open() until its header deadline.
     if ((total == 2 && buffer[0] == '\r' && buffer[1] == '\n') ||
         (total == 1 && buffer[0] == '\n')) {
         static constexpr int HTTP_INFORMATIONAL_MIN = 100;
@@ -403,8 +416,9 @@ static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, voi
         static constexpr int HTTP_REDIRECT_MIN = 300;
         static constexpr int HTTP_REDIRECT_END = 400;
         int code = self->response_.status_code;
-        bool continues = (code >= HTTP_INFORMATIONAL_MIN && code < HTTP_INFORMATIONAL_END) ||
-                         (code >= HTTP_REDIRECT_MIN && code < HTTP_REDIRECT_END);
+        bool continues =
+            (code >= HTTP_INFORMATIONAL_MIN && code < HTTP_INFORMATIONAL_END) ||
+            (code >= HTTP_REDIRECT_MIN && code < HTTP_REDIRECT_END && self->location_seen_);
         if (!continues) {
             self->headers_ready_ = true;
         }

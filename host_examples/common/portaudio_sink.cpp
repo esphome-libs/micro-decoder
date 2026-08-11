@@ -226,7 +226,7 @@ void PortAudioSink::close_stream() {
     this->ring_buffer_.reset();
 }
 
-void PortAudioSink::drain() {
+void PortAudioSink::drain(uint32_t timeout_ms) {
     static constexpr long DRAIN_POLL_MS = 10;
     if (this->stream_ == nullptr) {
         return;
@@ -234,7 +234,20 @@ void PortAudioSink::drain() {
     // Wait for the PortAudio callback to pull everything out of the ring buffer.
     // Pa_StopStream() in close_stream() then waits for the device to finish
     // playing the buffers already handed to the callback.
+    //
+    // The deadline bounds the wait: a device that stops consuming while the stream
+    // still reports itself active (unplugged USB or Bluetooth output, stalled host
+    // API) would otherwise hang the caller forever.
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (this->ring_buffer_.available() > 0 && Pa_IsStreamActive(this->stream_) == 1) {
+        if (this->abort_write_.load(std::memory_order_acquire)) {
+            break;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+            fprintf(stderr, "PortAudio: drain timed out with %zu bytes buffered\n",
+                    this->ring_buffer_.available());
+            break;
+        }
         Pa_Sleep(DRAIN_POLL_MS);
     }
 }
