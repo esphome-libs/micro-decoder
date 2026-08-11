@@ -35,6 +35,19 @@ struct HttpResponse {
 /// @param context The cancel_context supplied in HttpRequest
 using HttpCancelCheck = bool (*)(void* context);
 
+/// @brief Connect budget applied when a request configures none
+static constexpr uint32_t HTTP_DEFAULT_TIMEOUT_MS = 30000;
+
+/// @brief Resolves the connect budget a request will actually be given
+/// @note Both clients substitute HTTP_DEFAULT_TIMEOUT_MS for a zero budget, so callers that
+/// size their own waits around open() have to resolve it the same way rather than reading
+/// connect_timeout_ms directly.
+/// @param connect_timeout_ms Configured budget, where 0 requests the default
+/// @return Budget open() will enforce, in milliseconds
+inline uint32_t http_connect_budget_ms(uint32_t connect_timeout_ms) {
+    return connect_timeout_ms == 0 ? HTTP_DEFAULT_TIMEOUT_MS : connect_timeout_ms;
+}
+
 /**
  * @brief Everything an HttpClient needs to open a streaming request
  *
@@ -100,9 +113,13 @@ public:
 
     /// @brief Opens the URL and fetches headers
     /// Blocks until the headers arrive, the request fails, request.cancel_check returns
-    /// true, or request.connect_timeout_ms elapses. Redirects are followed internally.
+    /// true, or request.connect_timeout_ms elapses. Redirects are followed internally, and
+    /// they draw from that same budget rather than restarting it per hop.
     /// @note The read timeout applies from the first header read onward, so implementations
     /// that block do so in slices bounded by request.read_timeout_ms.
+    /// @note cancel_check is polled between those slices and before each connection attempt.
+    /// An implementation whose socket handshake cannot be interrupted may not observe a
+    /// cancellation until the handshake returns, which the connect budget bounds.
     /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status)
     virtual bool open(const HttpRequest& request) = 0;

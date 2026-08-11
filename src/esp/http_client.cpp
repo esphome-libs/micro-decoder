@@ -32,6 +32,18 @@ static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr uint8_t MAX_REDIRECTIONS = 5;
 
+/// @brief Returns how much of a tick deadline is left, in milliseconds
+/// @note The signed difference keeps the comparison correct across a tick counter wrap.
+/// @param deadline_ticks Tick count the budget expires at
+/// @return Milliseconds remaining, or 0 once the deadline has passed
+static uint32_t remaining_budget_ms(TickType_t deadline_ticks) {
+    int32_t remaining_ticks = static_cast<int32_t>(deadline_ticks - xTaskGetTickCount());
+    if (remaining_ticks <= 0) {
+        return 0;
+    }
+    return pdTICKS_TO_MS(static_cast<TickType_t>(remaining_ticks));
+}
+
 /// @brief Returns true if the URL begins with an "https:" scheme (case-insensitive)
 static bool url_has_https_scheme(const std::string& url) {
     static constexpr char SCHEME[] = "https:";
@@ -101,7 +113,12 @@ public:
             return false;
         }
 
-        if (this->connect_and_fetch_headers(request) < 0) {
+        // One budget for the whole exchange, redirects included. Every hop draws from what is
+        // left of it, so a chain of slow hops cannot stack a fresh timeout each.
+        const uint32_t budget_ms = http_connect_budget_ms(request.connect_timeout_ms);
+        const TickType_t deadline_ticks = xTaskGetTickCount() + pdMS_TO_TICKS(budget_ms);
+
+        if (this->connect_and_fetch_headers(request, deadline_ticks) < 0) {
             this->cleanup();
             return false;
         }
@@ -113,7 +130,7 @@ public:
         uint8_t redirect_count = 0;
         while (esp_http_client_set_redirection(this->client_) == ESP_OK &&
                redirect_count < MAX_REDIRECTIONS) {
-            if (this->connect_and_fetch_headers(request) < 0) {
+            if (this->connect_and_fetch_headers(request, deadline_ticks) < 0) {
                 this->cleanup();
                 return false;
             }
@@ -182,13 +199,28 @@ public:
 
 private:
     /// @brief Connects the socket and collects the response headers
-    /// The connect timeout governs the socket handshake, then the read timeout takes over so
-    /// every later blocking call -- the header retries below and every body read -- returns
-    /// within one short slice.
+    /// The socket handshake gets whatever is left of the deadline, then the read timeout takes
+    /// over so every later blocking call -- the header retries below and every body read --
+    /// returns within one short slice.
+    /// @note esp_http_client_open() cannot be interrupted once it blocks, so cancellation is
+    /// checked before it rather than during. Bounding it by the remaining budget instead of a
+    /// fresh timeout is what keeps that uninterruptible stretch short.
     /// @param request Connection settings, timeouts, and cancellation hook
+    /// @param deadline_ticks Tick count the whole exchange must finish by
     /// @return Header length on success, or a negative value on failure
-    int64_t connect_and_fetch_headers(const HttpRequest& request) {
-        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(request.connect_timeout_ms));
+    int64_t connect_and_fetch_headers(const HttpRequest& request, TickType_t deadline_ticks) {
+        if (request.cancel_check != nullptr && request.cancel_check(request.cancel_context)) {
+            MD_LOGD(TAG, "Cancelled before connecting");
+            return -1;
+        }
+
+        uint32_t remaining_ms = remaining_budget_ms(deadline_ticks);
+        if (remaining_ms == 0) {
+            MD_LOGE(TAG, "Ran out of time before connecting");
+            return -1;
+        }
+
+        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(remaining_ms));
         esp_err_t err = esp_http_client_open(this->client_, 0);
         if (err != ESP_OK) {
             MD_LOGE(TAG, "Failed to open URL: %s", esp_err_to_name(err));
@@ -196,7 +228,7 @@ private:
         }
 
         esp_http_client_set_timeout_ms(this->client_, static_cast<int>(request.read_timeout_ms));
-        return this->fetch_headers(request);
+        return this->fetch_headers(request, deadline_ticks);
     }
 
     /// @brief Fetches response headers, retrying while the socket read times out
@@ -206,13 +238,10 @@ private:
     /// way holds one of the few available slots in TIME_WAIT afterwards. Each attempt blocks
     /// for at most read_timeout_ms, which is how often the cancel check gets polled.
     /// @param request Connection settings, timeouts, and cancellation hook
+    /// @param deadline_ticks Tick count the whole exchange must finish by
     /// @return Header length on success, or a negative value on failure, cancellation, or
     /// timeout
-    int64_t fetch_headers(const HttpRequest& request) {
-        // Unsigned tick arithmetic, so the elapsed comparison stays correct across a wrap
-        const TickType_t start_ticks = xTaskGetTickCount();
-        const TickType_t budget_ticks = pdMS_TO_TICKS(request.connect_timeout_ms);
-
+    int64_t fetch_headers(const HttpRequest& request, TickType_t deadline_ticks) {
         while (true) {
             int64_t header_len = esp_http_client_fetch_headers(this->client_);
             if (header_len != -ESP_ERR_HTTP_EAGAIN) {
@@ -227,9 +256,8 @@ private:
                 return -1;
             }
 
-            if ((xTaskGetTickCount() - start_ticks) >= budget_ticks) {
-                MD_LOGE(TAG, "Timed out fetching headers after %u ms",
-                        static_cast<unsigned>(request.connect_timeout_ms));
+            if (remaining_budget_ms(deadline_ticks) == 0) {
+                MD_LOGE(TAG, "Timed out fetching headers");
                 return -1;
             }
         }

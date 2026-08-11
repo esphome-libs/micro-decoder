@@ -26,18 +26,23 @@ namespace micro_decoder {
 
 static constexpr const char* TAG = "micro_decoder.audio_reader";
 
+/// @brief Receive buffer assumed when the caller lets the platform choose one
+/// Matches the ESP-IDF HTTP client default. Guessing low is the safe direction: it only
+/// costs an extra run() call per receive buffer, while guessing high would let one read
+/// block for several read timeouts.
+static constexpr size_t DEFAULT_RX_BUFFER_SIZE = 512;
+
 /// @brief Chooses the largest read to request per run() call
 /// The HTTP client keeps issuing socket reads until the request is filled, so asking for
 /// more than one receive buffer lets a single read block for several read timeouts. A zero
-/// receive buffer size means the platform picks it, so fall back to the transfer buffer.
+/// receive buffer size means the platform picks it, so assume the platform default rather
+/// than the whole transfer buffer, which would drop the bound entirely.
 /// @param transfer_buffer_size Size of the reader's staging buffer in bytes
 /// @param http_rx_buffer_size Size of the HTTP client's receive buffer in bytes
 /// @return Maximum number of bytes to request from a single read
 static size_t compute_max_read_size(size_t transfer_buffer_size, size_t http_rx_buffer_size) {
-    if (http_rx_buffer_size == 0 || http_rx_buffer_size > transfer_buffer_size) {
-        return transfer_buffer_size;
-    }
-    return http_rx_buffer_size;
+    size_t rx_buffer_size = http_rx_buffer_size == 0 ? DEFAULT_RX_BUFFER_SIZE : http_rx_buffer_size;
+    return std::min(rx_buffer_size, transfer_buffer_size);
 }
 
 // ============================================================================

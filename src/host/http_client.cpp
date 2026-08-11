@@ -31,7 +31,6 @@ static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr size_t CURL_BUFFER_SIZE = 32UL * 1024UL;
 static constexpr int POLL_TIMEOUT_MS = 100;
-static constexpr uint32_t DEFAULT_TIMEOUT_MS = 30000;
 
 static uint64_t now_ms() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -130,7 +129,7 @@ public:
         curl_multi_add_handle(this->multi_, this->easy_);
 
         // Poll until headers arrive or timeout
-        uint64_t deadline = now_ms() + (timeout_ms == 0 ? DEFAULT_TIMEOUT_MS : timeout_ms);
+        uint64_t deadline = now_ms() + http_connect_budget_ms(timeout_ms);
         while (!this->headers_ready_ && !this->transfer_done_) {
             uint64_t now = now_ms();
             if (now >= deadline) {

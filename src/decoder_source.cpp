@@ -52,14 +52,21 @@ static constexpr uint32_t ALL_FLAGS = FLAG_READER_READY | FLAG_READER_FINISHED |
 struct DecoderSource::Impl {
     // Struct fields
     DecoderConfig config;
-    PlatformThread decoder_thread;
     EventFlags event_flags;
-    PlatformThread reader_thread;
     RingBuffer ring_buffer;
     /// @brief URL for the active URL-sourced playback
     /// Owned here rather than captured per thread so that starting a thread needs no
     /// allocation. Only written by play_url(), which runs after both threads are joined.
     std::string url;
+
+    /// @brief Worker threads, declared last so their destructors run first
+    /// Members are destroyed in reverse declaration order, so the backstop join in
+    /// ~PlatformThread has to happen before the event flags, ring buffer, and URL the threads
+    /// touch are gone. Everything declared after these is trivially destructible.
+    /// @note stop() still joins both explicitly; this only decides what an unjoined thread
+    /// would find still alive.
+    PlatformThread decoder_thread;
+    PlatformThread reader_thread;
 
     // Pointer fields
     /// @brief Source buffer for the active buffer-sourced playback; owned by the caller
@@ -260,11 +267,14 @@ struct DecoderSource::Impl {
 
     /// @brief Decoder thread entry point for URL-based playback
     void decoder_thread_func_url() {
-        // Wait for the reader to signal file type or error
+        // Wait for the reader to signal file type or error. The budget has to be resolved the
+        // same way the HTTP client resolves it, or a configured zero would leave the reader
+        // connecting long after this wait gave up on it.
         static constexpr uint32_t WAIT_MARGIN_MS = 2000;
+        uint32_t connect_budget_ms = http_connect_budget_ms(this->config.http_timeout_ms);
         uint32_t bits =
             this->event_flags.wait(FLAG_READER_READY | FLAG_READER_ERROR | FLAG_COMMAND_STOP, false,
-                                   false, this->config.http_timeout_ms + WAIT_MARGIN_MS);
+                                   false, connect_budget_ms + WAIT_MARGIN_MS);
 
         if (bits & FLAG_COMMAND_STOP) {
             return;
