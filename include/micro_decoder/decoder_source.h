@@ -84,10 +84,11 @@ public:
     /// @note Calls `stop()` first if already active.
     /// @note All public methods except state() must be called from the same thread.
     /// @param url HTTP or HTTPS URL of the audio stream
-    /// @return true if the threads were started successfully. Returns false (and transitions
-    /// to FAILED) on initialization failure, if the ring buffer cannot be allocated, or if
-    /// either thread cannot be created. Connection and decode errors are reported
-    /// asynchronously via on_state_change(FAILED).
+    /// @return true if the threads were started successfully. Returns false if no listener is
+    /// set, after stopping any active playback. Returns false (and transitions to FAILED) on
+    /// initialization failure, if the ring buffer cannot be allocated, or if either thread
+    /// cannot be created. Connection and decode errors are reported asynchronously via
+    /// on_state_change(FAILED).
     bool play_url(const std::string& url);
 
     /// @brief Starts decoding audio from an in-memory buffer
@@ -98,9 +99,10 @@ public:
     /// @param length Length of the buffer in bytes (must be > 0)
     /// @param type Audio file format of the buffer contents
     /// @return false if data is null, length is zero, or the format is unsupported
-    /// (AudioFileType::NONE), leaving the state unchanged. Returns false (and transitions to
-    /// FAILED) on initialization failure or if the decoder thread cannot be created. Decode
-    /// errors are reported asynchronously via on_state_change(FAILED).
+    /// (AudioFileType::NONE), leaving the state unchanged. Returns false if no listener is set,
+    /// after stopping any active playback. Returns false (and transitions to FAILED) on
+    /// initialization failure or if the decoder thread cannot be created. Decode errors are
+    /// reported asynchronously via on_state_change(FAILED).
     bool play_buffer(const uint8_t* data, size_t length, AudioFileType type);
 
     /// @brief Requests a stop and waits for all threads to finish
