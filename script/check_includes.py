@@ -74,10 +74,14 @@ EXCLUDE_BASENAMES = [r"^test_audio_.*\.h$"]
 # Headers the engine must not report (suffix regexes for --ignore-headers).
 # curl/easy.h and curl/multi.h are pulled in by <curl/curl.h>, libcurl's
 # documented public umbrella, which is what the host HTTP client includes.
-# The _string.h / _strings.h / _pthread_t.h entries are Apple libc private
-# headers: on macOS the declarations of memcpy, strcasecmp, and pthread_t live
-# there, so attribution points at them instead of the public <cstring>,
-# <strings.h>, and <pthread.h> the sources correctly include.
+# The rest are C library headers whose real home differs per platform, so
+# attribution names a header the source has no business including directly:
+# str*/mem* live in <string.h> / <strings.h> on glibc but in the private
+# _string.h / _strings.h on Apple libc, and pthread_t comes from
+# bits/pthreadtypes.h on glibc and sys/_pthread/_pthread_t.h on macOS. The
+# sources include the portable spellings (<cstring>, <strings.h>, <pthread.h>);
+# ignoring these keeps the check from demanding a different answer on each OS,
+# the same reason stdlib.h is on this list family-wide.
 IGNORE_HEADERS = [
     "sdkconfig.h",
     "stdlib.h",
@@ -85,8 +89,11 @@ IGNORE_HEADERS = [
     "_endian.h",
     "curl/easy.h",
     "curl/multi.h",
+    "string.h",
+    "strings.h",
     "_string.h",
     "_strings.h",
+    "pthreadtypes.h",
     "_pthread_t.h",
 ]
 
