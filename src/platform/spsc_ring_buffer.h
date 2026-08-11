@@ -52,9 +52,7 @@ class SpscRingBuffer {
 public:
     SpscRingBuffer() = default;
     ~SpscRingBuffer() {
-        if (this->handle_ != nullptr) {
-            vRingbufferDelete(this->handle_);
-        }
+        this->destroy();
     }
 
     SpscRingBuffer(const SpscRingBuffer&) = delete;
@@ -66,14 +64,23 @@ public:
     /// @param storage Pointer to caller-provided backing storage
     /// @return true if creation succeeded
     bool create(size_t size, uint8_t* storage) {
-        if (this->handle_ != nullptr) {
-            vRingbufferDelete(this->handle_);
-            this->handle_ = nullptr;
-        }
+        this->destroy();
         this->storage_size_ = size;
         this->handle_ =
             xRingbufferCreateStatic(size, RINGBUF_TYPE_BYTEBUF, storage, &this->structure_);
         return this->handle_ != nullptr;
+    }
+
+    /// @brief Tears the ring buffer down and drops the reference to the caller's storage
+    /// @note Safe to call when nothing was created. Must be called before the caller frees
+    /// the storage passed to create().
+    void destroy() {
+        if (this->handle_ != nullptr) {
+            vRingbufferDelete(this->handle_);
+            this->handle_ = nullptr;
+        }
+        this->acquired_item_ = nullptr;
+        this->storage_size_ = 0;
     }
 
     /// @brief Writes up to len bytes into the ring buffer
@@ -201,6 +208,19 @@ public:
         this->free_bytes_ = size;
         this->acquired_len_ = 0;
         return true;
+    }
+
+    /// @brief Tears the ring buffer down and drops the reference to the caller's storage
+    /// @note Safe to call when nothing was created. Must be called before the caller frees
+    /// the storage passed to create().
+    void destroy() {
+        std::lock_guard<std::mutex> lock(this->mtx_);
+        this->storage_ = nullptr;
+        this->storage_size_ = 0;
+        this->write_offset_ = 0;
+        this->read_offset_ = 0;
+        this->free_bytes_ = 0;
+        this->acquired_len_ = 0;
     }
 
     /// @brief Writes up to len bytes into the ring buffer

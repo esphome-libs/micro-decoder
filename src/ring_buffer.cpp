@@ -27,6 +27,12 @@ bool RingBuffer::create(size_t size) {
     return this->spsc_.create(size, this->storage_.data());
 }
 
+void RingBuffer::release() {
+    // Tear the ring buffer down before freeing the storage it points at
+    this->spsc_.destroy();
+    this->storage_.release();
+}
+
 size_t RingBuffer::write(const uint8_t* data, size_t len, uint32_t timeout_ms) {
     return this->spsc_.write(data, len, timeout_ms);
 }

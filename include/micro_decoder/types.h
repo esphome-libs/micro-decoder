@@ -273,6 +273,14 @@ struct DecoderConfig {
     /// @brief Size of the ESP-IDF HTTP client receive buffer in bytes (ESP-IDF only)
     size_t http_rx_buffer_size{2048};
 
+    /// @brief Keep the ring buffer allocated for the lifetime of the DecoderSource
+    /// When false (the default), the ring buffer is allocated by play_url() and freed by
+    /// stop(), so an idle DecoderSource holds no ring buffer memory. When true, it is
+    /// allocated once at construction and reused by every playback, which trades the
+    /// memory for a guaranteed allocation: playback cannot fail later because the heap
+    /// has fragmented. Buffer-sourced playback never allocates a ring buffer either way.
+    bool persistent_ring_buffer{false};
+
     // ========================================
     // ESP-IDF thread config (ignored on host)
     // ========================================

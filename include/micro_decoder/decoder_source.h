@@ -103,7 +103,9 @@ public:
 
     /// @brief Requests a stop and waits for all threads to finish
     /// After stop() returns, the state is IDLE (if previously PLAYING or FAILED)
-    /// or unchanged (if already IDLE).
+    /// or unchanged (if already IDLE). The ring buffer is freed unless
+    /// DecoderConfig::persistent_ring_buffer is set, so an idle DecoderSource holds no
+    /// streaming buffers.
     /// @note The on_state_change(IDLE) callback is deferred; it fires on the next loop() call,
     /// not before stop() returns.
     void stop();

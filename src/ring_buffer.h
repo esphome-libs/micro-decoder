@@ -50,6 +50,16 @@ public:
     /// @return true on success, false if allocation fails
     bool create(size_t size);
 
+    /// @brief Tears down the ring buffer and frees its storage
+    /// @note Safe to call when nothing is allocated. No reader or writer may be active.
+    void release();
+
+    /// @brief Returns whether storage is currently allocated
+    /// @return true if create() has succeeded and release() has not been called since
+    bool allocated() const {
+        return static_cast<bool>(this->storage_);
+    }
+
     /// @brief Writes up to len bytes into the ring buffer
     /// @param data Pointer to the data to write
     /// @param len Number of bytes to write
@@ -80,8 +90,10 @@ public:
 
 private:
     // Struct fields
-    SpscRingBuffer spsc_;
+    // Declaration order matters: spsc_ holds a reference to storage_, so it must be
+    // declared last and therefore destroyed first.
     PlatformBuffer storage_;
+    SpscRingBuffer spsc_;
 };
 
 }  // namespace micro_decoder

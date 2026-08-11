@@ -78,7 +78,31 @@ struct DecoderSource::Impl {
     std::atomic<bool> pending_state_notification_{false};
 
     explicit Impl(const DecoderConfig& cfg)
-        : config(cfg), initialized_(this->event_flags.create()) {}
+        : config(cfg), initialized_(this->event_flags.create()) {
+        // Claim the ring buffer up front so playback cannot fail later on a fragmented
+        // heap. A failure here is not fatal: ensure_ring_buffer() retries at play time.
+        if (this->config.persistent_ring_buffer &&
+            !this->ring_buffer.create(this->config.ring_buffer_size)) {
+            MD_LOGW(TAG, "Failed to preallocate the ring buffer; will retry on playback");
+        }
+    }
+
+    /// @brief Allocates the ring buffer unless one is already held
+    /// @return true if the ring buffer is ready for use
+    bool ensure_ring_buffer() {
+        if (this->ring_buffer.allocated()) {
+            return true;
+        }
+        return this->ring_buffer.create(this->config.ring_buffer_size);
+    }
+
+    /// @brief Frees the ring buffer unless it is configured to persist
+    /// @note All threads must be joined first; they read and write the ring buffer.
+    void release_ring_buffer() {
+        if (!this->config.persistent_ring_buffer) {
+            this->ring_buffer.release();
+        }
+    }
 
     /// @brief Updates the decoder state and notifies the listener immediately
     /// Only called from pump_events(), which runs on the user's thread via loop().
@@ -349,7 +373,7 @@ bool DecoderSource::play_url(const std::string& url) {
 
     this->stop();
 
-    if (!this->impl_->ring_buffer.create(this->impl_->config.ring_buffer_size)) {
+    if (!this->impl_->ensure_ring_buffer()) {
         MD_LOGE(TAG, "Failed to allocate ring buffer");
         this->impl_->store_state(DecoderState::FAILED);
         return false;
@@ -367,6 +391,7 @@ bool DecoderSource::play_url(const std::string& url) {
                                this->impl_->config.reader_priority, false};
     if (!this->impl_->reader_thread.start(reader_config, &Impl::reader_entry, this->impl_.get())) {
         MD_LOGE(TAG, "Failed to start the reader thread");
+        this->impl_->release_ring_buffer();
         this->impl_->store_state(DecoderState::FAILED);
         return false;
     }
@@ -382,6 +407,7 @@ bool DecoderSource::play_url(const std::string& url) {
         this->impl_->event_flags.set(FLAG_COMMAND_STOP);
         this->impl_->reader_thread.join();
         this->impl_->event_flags.clear(ALL_FLAGS);
+        this->impl_->release_ring_buffer();
         this->impl_->store_state(DecoderState::FAILED);
         return false;
     }
@@ -452,6 +478,9 @@ void DecoderSource::stop() {
 
     // Clear all pending events; threads are done, no more will arrive
     this->impl_->event_flags.clear(ALL_FLAGS);
+
+    // Safe now that both threads are joined; nothing else touches the ring buffer
+    this->impl_->release_ring_buffer();
 
     if (current == DecoderState::PLAYING || current == DecoderState::FAILED) {
         this->impl_->store_state(DecoderState::IDLE);
