@@ -87,11 +87,13 @@ struct DecoderSource::Impl {
         }
     }
 
-    /// @brief Allocates the ring buffer unless one is already held
+    /// @brief Makes an empty ring buffer available, allocating one if none is held
+    /// @note A retained buffer still holds whatever the previous playback left unread, so it
+    /// is reset rather than reused as-is.
     /// @return true if the ring buffer is ready for use
     bool ensure_ring_buffer() {
         if (this->ring_buffer.allocated()) {
-            return true;
+            return this->ring_buffer.reset();
         }
         return this->ring_buffer.create(this->config.ring_buffer_size);
     }
@@ -121,42 +123,49 @@ struct DecoderSource::Impl {
         this->pending_state_notification_.store(true, std::memory_order_release);
     }
 
+    /// @brief Fires a state change deferred by stop() or a play_*() error path
+    /// @note Touches no event flags, so it is safe even when they were never created.
+    void drain_pending_notification() {
+        if (!this->pending_state_notification_.exchange(false, std::memory_order_acq_rel)) {
+            return;
+        }
+        DecoderState s = this->decoder_state.load(std::memory_order_acquire);
+        DecoderListener* l = this->listener.load(std::memory_order_acquire);
+        if (l != nullptr) {
+            l->on_state_change(s);
+        }
+    }
+
     /// @brief Reads pending event flags and fires listener callbacks
     /// Called from DecoderSource::loop() on the user's thread.
     void pump_events() {
-        // Drain deferred state notifications from stop() or play_*() error paths
-        if (this->pending_state_notification_.exchange(false, std::memory_order_acq_rel)) {
-            DecoderState s = this->decoder_state.load(std::memory_order_acquire);
-            DecoderListener* l = this->listener.load(std::memory_order_acquire);
-            if (l != nullptr) {
-                l->on_state_change(s);
-            }
-        }
-
         uint32_t flags = this->event_flags.get();
 
         // Check FAILED first -- if the decoder failed, skip STARTED/FINISHED to avoid
         // spurious PLAYING or IDLE callbacks before the FAILED transition.
-        if (flags & FLAG_DECODER_FAILED) {
-            this->event_flags.clear(FLAG_DECODER_FAILED | FLAG_DECODER_STARTED |
-                                    FLAG_DECODER_FINISHED);
-            this->set_state(DecoderState::FAILED);
-        } else {
-            if (flags & FLAG_DECODER_STARTED) {
-                this->event_flags.clear(FLAG_DECODER_STARTED);
-                DecoderState current = this->decoder_state.load(std::memory_order_acquire);
-                if (current != DecoderState::FAILED) {
-                    this->set_state(DecoderState::PLAYING);
-                }
-            }
+        bool failed = (flags & FLAG_DECODER_FAILED) != 0;
+        bool started = !failed && (flags & FLAG_DECODER_STARTED) != 0;
+        bool finished = !failed && (flags & FLAG_DECODER_FINISHED) != 0;
 
-            if (flags & FLAG_DECODER_FINISHED) {
-                this->event_flags.clear(FLAG_DECODER_FINISHED);
-                DecoderState current = this->decoder_state.load(std::memory_order_acquire);
-                if (current == DecoderState::PLAYING) {
-                    this->set_state(DecoderState::IDLE);
-                }
-            }
+        // Clear everything this call consumes before running any callback. A listener may
+        // call stop() or play_url() from on_state_change(), and clearing afterwards would
+        // discard flags belonging to the playback it just started.
+        this->event_flags.clear(
+            flags & (FLAG_DECODER_FAILED | FLAG_DECODER_STARTED | FLAG_DECODER_FINISHED));
+
+        if (failed) {
+            this->set_state(DecoderState::FAILED);
+            return;
+        }
+
+        if (started &&
+            this->decoder_state.load(std::memory_order_acquire) != DecoderState::FAILED) {
+            this->set_state(DecoderState::PLAYING);
+        }
+
+        if (finished &&
+            this->decoder_state.load(std::memory_order_acquire) == DecoderState::PLAYING) {
+            this->set_state(DecoderState::IDLE);
         }
     }
 
@@ -172,6 +181,14 @@ struct DecoderSource::Impl {
         return nullptr;
     }
 
+    /// @brief Polled by the HTTP client while it blocks connecting
+    /// @param arg Pointer to the owning Impl
+    /// @return true once a stop has been requested
+    static bool reader_cancelled(void* arg) {
+        auto* impl = static_cast<Impl*>(arg);
+        return (impl->event_flags.get() & FLAG_COMMAND_STOP) != 0;
+    }
+
     /// @brief Reader thread entry point that streams from the URL in this->url
     void reader_thread_func() {
         AudioReader reader(this->config.transfer_buffer_size, this->config.http_timeout_ms,
@@ -179,6 +196,8 @@ struct DecoderSource::Impl {
                            this->config.http_rx_buffer_size, this->config.http_user_agent,
                            this->config.http_ca_certificate);
         reader.set_sink(&this->ring_buffer);
+        // Connecting blocks for far longer than a body read, so let it be abandoned too
+        reader.set_cancel_check(&Impl::reader_cancelled, this);
 
         if (!reader.start_url(this->url)) {
             MD_LOGE(TAG, "Reader failed to open URL");
@@ -251,6 +270,13 @@ struct DecoderSource::Impl {
             return;
         }
         if (bits & FLAG_READER_ERROR) {
+            this->event_flags.set(FLAG_DECODER_FAILED);
+            return;
+        }
+        if ((bits & FLAG_READER_READY) == 0) {
+            // The wait timed out. Falling through would decode with whatever file type was
+            // left over from an earlier playback.
+            MD_LOGE(TAG, "Timed out waiting for the reader to report a file type");
             this->event_flags.set(FLAG_DECODER_FAILED);
             return;
         }
@@ -384,6 +410,9 @@ bool DecoderSource::play_url(const std::string& url) {
     this->impl_->event_flags.clear(ALL_FLAGS);
     this->impl_->pending_state_notification_.store(false, std::memory_order_release);
 
+    // Drop any type left over from a previous playback; the reader publishes the real one
+    this->impl_->detected_file_type.store(AudioFileType::NONE, std::memory_order_release);
+
     // Copy the URL before starting the reader; the thread reads it from the Impl
     this->impl_->url = url;
 
@@ -489,6 +518,10 @@ void DecoderSource::stop() {
 }
 
 void DecoderSource::loop() {
+    // Deferred notifications do not depend on the event flags, so they still have to be
+    // delivered when initialization failed -- that is exactly when a FAILED state is waiting
+    this->impl_->drain_pending_notification();
+
     // pump_events() reads the event flags, whose handle was never created
     if (!this->impl_->initialized_) {
         return;

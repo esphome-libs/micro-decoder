@@ -61,7 +61,15 @@ public:
     /// @note Safe to call when nothing is allocated. No reader or writer may be active.
     void release();
 
-    /// @brief Returns whether storage is currently allocated
+    /// @brief Discards any buffered data, keeping the existing storage
+    /// @note No reader or writer may be active. Use between playbacks when the storage is
+    /// reused, so leftover bytes are not served to the next consumer.
+    /// @return true if the ring buffer is ready for use, false if nothing is allocated
+    bool reset();
+
+    /// @brief Returns whether the ring buffer is allocated and ready for use
+    /// @note create() and reset() both release their storage on failure, so this never
+    /// reports true for a half-built buffer.
     /// @return true if create() has succeeded and release() has not been called since
     bool allocated() const {
         return static_cast<bool>(this->storage_);

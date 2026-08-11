@@ -16,6 +16,8 @@
 
 #include "platform/logging.h"
 
+#include <algorithm>
+
 namespace micro_decoder {
 
 // ============================================================================
@@ -23,6 +25,20 @@ namespace micro_decoder {
 // ============================================================================
 
 static constexpr const char* TAG = "micro_decoder.audio_reader";
+
+/// @brief Chooses the largest read to request per run() call
+/// The HTTP client keeps issuing socket reads until the request is filled, so asking for
+/// more than one receive buffer lets a single read block for several read timeouts. A zero
+/// receive buffer size means the platform picks it, so fall back to the transfer buffer.
+/// @param transfer_buffer_size Size of the reader's staging buffer in bytes
+/// @param http_rx_buffer_size Size of the HTTP client's receive buffer in bytes
+/// @return Maximum number of bytes to request from a single read
+static size_t compute_max_read_size(size_t transfer_buffer_size, size_t http_rx_buffer_size) {
+    if (http_rx_buffer_size == 0 || http_rx_buffer_size > transfer_buffer_size) {
+        return transfer_buffer_size;
+    }
+    return http_rx_buffer_size;
+}
 
 // ============================================================================
 // AudioReader
@@ -32,13 +48,15 @@ AudioReader::AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
                          uint32_t http_read_timeout_ms, uint32_t write_timeout_ms,
                          size_t http_rx_buffer_size, std::string user_agent,
                          std::string ca_certificate)
-    : user_agent_(std::move(user_agent)),
-      ca_certificate_(std::move(ca_certificate)),
-      http_rx_buffer_size_(http_rx_buffer_size),
-      http_read_timeout_ms_(http_read_timeout_ms),
-      http_timeout_ms_(http_timeout_ms),
+    : max_read_size_(compute_max_read_size(transfer_buffer_size, http_rx_buffer_size)),
       write_timeout_ms_(write_timeout_ms),
-      allocation_ok_(this->transfer_buffer_.allocate(transfer_buffer_size)) {}
+      allocation_ok_(this->transfer_buffer_.allocate(transfer_buffer_size)) {
+    this->request_.user_agent = std::move(user_agent);
+    this->request_.ca_certificate = std::move(ca_certificate);
+    this->request_.rx_buffer_size = http_rx_buffer_size;
+    this->request_.connect_timeout_ms = http_timeout_ms;
+    this->request_.read_timeout_ms = http_read_timeout_ms;
+}
 
 AudioReader::~AudioReader() {
     if (this->client_) {
@@ -53,18 +71,13 @@ bool AudioReader::start_url(const std::string& url) {
     }
     this->file_type_ = AudioFileType::NONE;
     this->client_ = create_http_client();
+    this->request_.url = url;
 
-    if (!this->client_->open(url, this->http_timeout_ms_, this->http_rx_buffer_size_,
-                             this->user_agent_, this->ca_certificate_)) {
+    if (!this->client_->open(this->request_)) {
         MD_LOGE(TAG, "Failed to connect to URL: %s", url.c_str());
         this->client_.reset();
         return false;
     }
-
-    // Headers are done; shorten the socket timeout so a silent server cannot hold a single
-    // read() -- and with it the reader thread's response to a stop request -- for the full
-    // connect timeout
-    this->client_->set_read_timeout_ms(this->http_read_timeout_ms_);
 
     const HttpResponse& resp = this->client_->response_info();
 
@@ -104,7 +117,10 @@ AudioReaderState AudioReader::run() {
         }
     }
 
-    size_t space = this->transfer_buffer_.free();
+    // Ask for at most one receive buffer's worth. The HTTP client keeps issuing socket reads
+    // until the request is filled, so a larger ask lets a single call block for several read
+    // timeouts, and the stop request can only be seen between calls.
+    size_t space = std::min(this->transfer_buffer_.free(), this->max_read_size_);
     int received = this->client_->read(this->transfer_buffer_.get_buffer_end(), space);
 
     if (received < 0) {

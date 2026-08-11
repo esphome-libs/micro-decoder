@@ -261,16 +261,17 @@ struct DecoderConfig {
     /// (AudioDecoder) in bytes. The decoder may reallocate its copy larger if needed.
     size_t transfer_buffer_size{8192};  // NOLINT(readability-magic-numbers)
 
-    /// @brief HTTP connection timeout in milliseconds
-    /// Applies while connecting and fetching headers. Body reads use
-    /// http_read_timeout_ms instead.
+    /// @brief Total budget for connecting and fetching headers, in milliseconds
+    /// Bounds how long stop() waits while a connection is still being established. Body
+    /// reads use http_read_timeout_ms instead.
     uint32_t http_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
 
-    /// @brief Maximum time a single HTTP body read may block, in milliseconds (ESP-IDF only)
-    /// Bounds how long stop() waits for the reader thread, since the reader can only
-    /// observe a stop request between reads. Keep it well below http_timeout_ms: a server
-    /// that accepts the connection and then goes quiet would otherwise stall stop() -- and
-    /// any play_url() that calls it -- for the full connection timeout.
+    /// @brief Maximum time a single HTTP socket read may block, in milliseconds (ESP-IDF only)
+    /// Bounds how long stop() waits for the reader thread once the stream is running, since
+    /// the reader can only observe a stop request between reads. Keep it well below
+    /// http_timeout_ms: a server that accepts the connection and then goes quiet would
+    /// otherwise stall stop() -- and any play_url() that calls it -- for the full connection
+    /// timeout.
     uint32_t http_read_timeout_ms{250};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time to block in on_audio_write() per call (milliseconds)
@@ -280,6 +281,8 @@ struct DecoderConfig {
     uint32_t reader_write_timeout_ms{25};  // NOLINT(readability-magic-numbers)
 
     /// @brief Size of the ESP-IDF HTTP client receive buffer in bytes (ESP-IDF only)
+    /// Also caps how much the reader requests from a single HTTP read, so it bounds how long
+    /// one read can block along with http_read_timeout_ms.
     size_t http_rx_buffer_size{2048};
 
     /// @brief Keep the ring buffer allocated for the lifetime of the DecoderSource
@@ -287,7 +290,8 @@ struct DecoderConfig {
     /// stop(), so an idle DecoderSource holds no ring buffer memory. When true, it is
     /// allocated once at construction and reused by every playback, which trades the
     /// memory for a guaranteed allocation: playback cannot fail later because the heap
-    /// has fragmented. Buffer-sourced playback never allocates a ring buffer either way.
+    /// has fragmented. A reused buffer is emptied before each playback either way.
+    /// Buffer-sourced playback never allocates a ring buffer.
     bool persistent_ring_buffer{false};
 
     // ========================================

@@ -74,6 +74,16 @@ public:
         return this->file_type_;
     }
 
+    /// @brief Installs a callback polled while start_url() waits to connect
+    /// @note Must be called before start_url(). The callback runs on the reader's own thread
+    /// and must not block.
+    /// @param check Returns true to abandon the connection attempt; nullptr disables it
+    /// @param context Opaque argument passed to check
+    void set_cancel_check(HttpCancelCheck check, void* context) {
+        this->request_.cancel_check = check;
+        this->request_.cancel_context = context;
+    }
+
     /// @brief Sets the ring buffer where raw audio data is written
     /// @param ring_buffer Destination ring buffer for raw audio data
     void set_sink(RingBuffer* ring_buffer) {
@@ -93,20 +103,19 @@ public:
 
 private:
     // Struct fields
+    HttpRequest request_;
     TransferBuffer transfer_buffer_;
-    std::string user_agent_;
-    std::string ca_certificate_;
 
     // Pointer fields
     std::unique_ptr<HttpClient> client_;
     RingBuffer* ring_buffer_{nullptr};
 
     // size_t fields
-    size_t http_rx_buffer_size_;
+    /// @brief Largest read requested per run() call
+    /// Kept to one receive buffer so a single read cannot block for several read timeouts.
+    size_t max_read_size_;
 
     // 32-bit fields
-    uint32_t http_read_timeout_ms_;
-    uint32_t http_timeout_ms_;
     uint32_t write_timeout_ms_;
 
     // 8-bit fields

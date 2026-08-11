@@ -142,11 +142,11 @@ DecoderConfig config;
 config.ring_buffer_size    = 500 * 1024;  // 500 KB (increase for high-bitrate streams)
 config.transfer_buffer_size = 16 * 1024; // 16 KB (increase from 8 KB default)
 config.http_timeout_ms        = 5000;    // HTTP connect and header timeout
-config.http_read_timeout_ms   = 250;     // Bounds how long stop() waits for the reader
+config.http_read_timeout_ms   = 250;     // Bounds how long a single body read blocks
 config.audio_write_timeout_ms = 50;      // Override default of 25 ms
 ```
 
-By default the ring buffer is allocated by `play_url()` and freed by `stop()`, so an idle `DecoderSource` holds no streaming buffers. Set `persistent_ring_buffer` to allocate it once at construction and reuse it for every playback instead -- this trades the memory for a guaranteed allocation, so playback cannot fail later because the heap has fragmented:
+By default the ring buffer is allocated by `play_url()` and freed by `stop()`, so an idle `DecoderSource` holds no streaming buffers. Set `persistent_ring_buffer` to allocate it once at construction and reuse it for every playback instead -- this trades the memory for a guaranteed allocation, so playback cannot fail later because the heap has fragmented. Either way the buffer starts each playback empty:
 
 ```cpp
 config.persistent_ring_buffer = true;
@@ -279,7 +279,7 @@ decoder.stop();  // Blocks until reader and decoder threads have exited
 
 `stop()` also frees the ring buffer, unless `persistent_ring_buffer` is set.
 
-How long it blocks is bounded by how quickly the threads notice the request. The reader can only check between HTTP reads, so worst case is roughly `http_read_timeout_ms` against a server that has gone quiet. Lower that value if a caller driving `loop()` from a main loop cannot tolerate the pause; `play_url()` inherits it, since it calls `stop()` first.
+How long it blocks is bounded by how quickly the threads notice the request. The reader can only check between HTTP reads, so once a stream is running the worst case is roughly `http_read_timeout_ms` against a server that has gone quiet. While a connection is still being established the bound is `http_timeout_ms` instead: header fetches are abandoned as soon as a stop is requested, but the socket handshake itself cannot be interrupted. Lower those values if a caller driving `loop()` from a main loop cannot tolerate the pause; `play_url()` inherits them, since it calls `stop()` first.
 
 The destructor calls `stop()` automatically.
 
@@ -356,15 +356,15 @@ int main() {
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `ring_buffer_size` | `size_t` | `49152` (48 KB) | Ring buffer size in bytes between the reader and decoder threads. Larger values absorb more HTTP jitter at the cost of memory. |
-| `persistent_ring_buffer` | `bool` | `false` | Keep the ring buffer allocated for the lifetime of the `DecoderSource`. When `false`, `play_url()` allocates it and `stop()` frees it. When `true`, it is allocated once at construction and reused, trading the memory for an allocation that cannot fail later on a fragmented heap. Buffer playback never allocates a ring buffer either way. |
+| `persistent_ring_buffer` | `bool` | `false` | Keep the ring buffer allocated for the lifetime of the `DecoderSource`. When `false`, `play_url()` allocates it and `stop()` frees it. When `true`, it is allocated once at construction and reused, trading the memory for an allocation that cannot fail later on a fragmented heap. A reused buffer is emptied before each playback. Buffer playback never allocates a ring buffer either way. |
 | `transfer_buffer_size` | `size_t` | `8192` (8 KB) | Flat staging buffer size in bytes. Used by the reader to batch HTTP data into the ring buffer and by the decoder for its output buffer. |
-| `http_timeout_ms` | `uint32_t` | `5000` | HTTP connect and header fetch timeout in milliseconds. Body reads use `http_read_timeout_ms`. |
-| `http_read_timeout_ms` | `uint32_t` | `250` | Maximum time a single HTTP body read may block, in milliseconds. Bounds how long `stop()` waits for the reader thread, which can only observe a stop request between reads. Keep it well below `http_timeout_ms`. No effect on host, where reads do not block. |
+| `http_timeout_ms` | `uint32_t` | `5000` | Total budget for connecting and fetching headers, in milliseconds. Bounds how long `stop()` waits while a connection is still being established. Body reads use `http_read_timeout_ms`. |
+| `http_read_timeout_ms` | `uint32_t` | `250` | Maximum time a single HTTP socket read may block, in milliseconds. Bounds how long `stop()` waits for the reader thread once the stream is running, since it can only observe a stop request between reads. Keep it well below `http_timeout_ms`. No effect on host, where reads do not block. |
 | `http_user_agent` | `std::string` | `"micro-decoder/<version> (https://github.com/esphome-libs/micro-decoder)"` | User-Agent header value sent with streaming requests. Set to empty to fall back to the underlying HTTP client's default. |
 | `http_ca_certificate` | `std::string` | `""` | PEM-encoded CA certificate(s) used to verify HTTPS servers. Empty falls back to the platform default trust store (MbedTLS certificate bundle on ESP-IDF when `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE` is enabled; system trust store on host). Ignored for plain HTTP. |
 | `audio_write_timeout_ms` | `uint32_t` | `25` | Maximum time to block in `on_audio_write()` per call, in milliseconds. |
 | `reader_write_timeout_ms` | `uint32_t` | `25` | Maximum time the reader blocks writing to the ring buffer per call, in milliseconds. |
-| `http_rx_buffer_size` | `size_t` | `2048` | ESP-IDF HTTP client receive buffer size in bytes. ESP-IDF only. |
+| `http_rx_buffer_size` | `size_t` | `2048` | ESP-IDF HTTP client receive buffer size in bytes. Also caps how much the reader requests from a single HTTP read, so it bounds how long one read can block along with `http_read_timeout_ms`. ESP-IDF only. |
 | `reader_stack_size` | `size_t` | `5120` (5 KB) | Reader task stack size in bytes. ESP-IDF only. |
 | `decoder_stack_size` | `size_t` | `5120` (5 KB) | Decoder task stack size in bytes. ESP-IDF only. |
 | `reader_priority` | `int` | `2` | FreeRTOS priority for the reader task. ESP-IDF only. |

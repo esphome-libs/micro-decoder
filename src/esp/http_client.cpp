@@ -16,6 +16,8 @@
 
 #include "platform/logging.h"
 #include <esp_http_client.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
 #include <esp_crt_bundle.h>
@@ -29,7 +31,6 @@ namespace micro_decoder {
 static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr uint8_t MAX_REDIRECTIONS = 5;
-static constexpr uint8_t MAX_HEADER_ATTEMPTS = 6;
 
 /// @brief Returns true if the URL begins with an "https:" scheme (case-insensitive)
 static bool url_has_https_scheme(const std::string& url) {
@@ -64,32 +65,29 @@ public:
     }
 
     /// @brief Opens an HTTP connection and begins streaming via esp_http_client
-    /// @param url The URL to connect to
-    /// @param timeout_ms Connection and transfer timeout in milliseconds; 0 uses a platform default
-    /// @param rx_buffer_size Size of the ESP-IDF HTTP receive buffer in bytes
+    /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status), false on connection error or non-2xx status
-    bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
-              const std::string& user_agent, const std::string& ca_certificate) override {
+    bool open(const HttpRequest& request) override {
         this->close();
         this->complete_ = false;
         this->response_ = HttpResponse{};
 
         esp_http_client_config_t cfg = {};
-        cfg.url = url.c_str();
+        cfg.url = request.url.c_str();
         cfg.disable_auto_redirect = false;
         cfg.max_redirection_count = MAX_REDIRECTIONS;
         cfg.event_handler = http_event_handler;
         cfg.user_data = this;
-        cfg.buffer_size = static_cast<int>(rx_buffer_size);
+        cfg.buffer_size = static_cast<int>(request.rx_buffer_size);
         cfg.keep_alive_enable = true;
-        cfg.timeout_ms = static_cast<int>(timeout_ms);
-        if (!user_agent.empty()) {
-            cfg.user_agent = user_agent.c_str();
+        cfg.timeout_ms = static_cast<int>(request.connect_timeout_ms);
+        if (!request.user_agent.empty()) {
+            cfg.user_agent = request.user_agent.c_str();
         }
 
-        if (url_has_https_scheme(url)) {
-            if (!ca_certificate.empty()) {
-                cfg.cert_pem = ca_certificate.c_str();
+        if (url_has_https_scheme(request.url)) {
+            if (!request.ca_certificate.empty()) {
+                cfg.cert_pem = request.ca_certificate.c_str();
             } else {
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
                 cfg.crt_bundle_attach = esp_crt_bundle_attach;
@@ -103,30 +101,7 @@ public:
             return false;
         }
 
-        esp_err_t err = esp_http_client_open(this->client_, 0);
-        if (err != ESP_OK) {
-            MD_LOGE(TAG, "Failed to open URL: %s", esp_err_to_name(err));
-            this->cleanup();
-            return false;
-        }
-
-        // ESP_ERR_HTTP_EAGAIN means the read timed out with the headers still incomplete.
-        // The connection and the parser state both survive it, so retry on the same client.
-        // Reconnecting instead would spend a socket per attempt, and every socket closed
-        // that way holds one of the few available slots in TIME_WAIT afterwards.
-        int64_t header_len = esp_http_client_fetch_headers(this->client_);
-        uint8_t attempts = 1;
-        while (header_len == -ESP_ERR_HTTP_EAGAIN && attempts < MAX_HEADER_ATTEMPTS) {
-            header_len = esp_http_client_fetch_headers(this->client_);
-            ++attempts;
-        }
-
-        if (header_len < 0) {
-            if (header_len == -ESP_ERR_HTTP_EAGAIN) {
-                MD_LOGE(TAG, "Timed out fetching headers after %u attempts", attempts);
-            } else {
-                MD_LOGE(TAG, "Failed to fetch headers");
-            }
+        if (this->connect_and_fetch_headers(request) < 0) {
             this->cleanup();
             return false;
         }
@@ -138,13 +113,7 @@ public:
         uint8_t redirect_count = 0;
         while (esp_http_client_set_redirection(this->client_) == ESP_OK &&
                redirect_count < MAX_REDIRECTIONS) {
-            err = esp_http_client_open(this->client_, 0);
-            if (err != ESP_OK) {
-                this->cleanup();
-                return false;
-            }
-            header_len = esp_http_client_fetch_headers(this->client_);
-            if (header_len < 0) {
+            if (this->connect_and_fetch_headers(request) < 0) {
                 this->cleanup();
                 return false;
             }
@@ -205,15 +174,6 @@ public:
         return this->complete_;
     }
 
-    /// @brief Lowers the socket timeout now that headers are done and the body is streaming
-    /// @param timeout_ms Maximum time a single read() may block, in milliseconds
-    void set_read_timeout_ms(uint32_t timeout_ms) override {
-        if (this->client_ == nullptr) {
-            return;
-        }
-        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(timeout_ms));
-    }
-
     /// @brief Closes the HTTP connection and frees esp_http_client resources
     /// @note Safe to call multiple times; a no-op if already closed
     void close() override {
@@ -221,6 +181,60 @@ public:
     }
 
 private:
+    /// @brief Connects the socket and collects the response headers
+    /// The connect timeout governs the socket handshake, then the read timeout takes over so
+    /// every later blocking call -- the header retries below and every body read -- returns
+    /// within one short slice.
+    /// @param request Connection settings, timeouts, and cancellation hook
+    /// @return Header length on success, or a negative value on failure
+    int64_t connect_and_fetch_headers(const HttpRequest& request) {
+        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(request.connect_timeout_ms));
+        esp_err_t err = esp_http_client_open(this->client_, 0);
+        if (err != ESP_OK) {
+            MD_LOGE(TAG, "Failed to open URL: %s", esp_err_to_name(err));
+            return -1;
+        }
+
+        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(request.read_timeout_ms));
+        return this->fetch_headers(request);
+    }
+
+    /// @brief Fetches response headers, retrying while the socket read times out
+    /// ESP_ERR_HTTP_EAGAIN means the read timed out with the headers still incomplete. The
+    /// connection and the parser state both survive it, so retry on the same client.
+    /// Reconnecting instead would spend a socket per attempt, and every socket closed that
+    /// way holds one of the few available slots in TIME_WAIT afterwards. Each attempt blocks
+    /// for at most read_timeout_ms, which is how often the cancel check gets polled.
+    /// @param request Connection settings, timeouts, and cancellation hook
+    /// @return Header length on success, or a negative value on failure, cancellation, or
+    /// timeout
+    int64_t fetch_headers(const HttpRequest& request) {
+        // Unsigned tick arithmetic, so the elapsed comparison stays correct across a wrap
+        const TickType_t start_ticks = xTaskGetTickCount();
+        const TickType_t budget_ticks = pdMS_TO_TICKS(request.connect_timeout_ms);
+
+        while (true) {
+            int64_t header_len = esp_http_client_fetch_headers(this->client_);
+            if (header_len != -ESP_ERR_HTTP_EAGAIN) {
+                if (header_len < 0) {
+                    MD_LOGE(TAG, "Failed to fetch headers");
+                }
+                return header_len;
+            }
+
+            if (request.cancel_check != nullptr && request.cancel_check(request.cancel_context)) {
+                MD_LOGD(TAG, "Cancelled while fetching headers");
+                return -1;
+            }
+
+            if ((xTaskGetTickCount() - start_ticks) >= budget_ticks) {
+                MD_LOGE(TAG, "Timed out fetching headers after %u ms",
+                        static_cast<unsigned>(request.connect_timeout_ms));
+                return -1;
+            }
+        }
+    }
+
     /// @brief Handles HTTP client events from esp_http_client
     static esp_err_t http_event_handler(esp_http_client_event_t* evt) {
         auto* self = static_cast<EspHttpClient*>(evt->user_data);

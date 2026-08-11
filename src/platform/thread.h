@@ -36,6 +36,8 @@
 
 namespace micro_decoder {
 
+static constexpr const char* THREAD_TAG = "micro_decoder.thread";
+
 // ============================================================================
 // ThreadConfig
 // ============================================================================
@@ -79,8 +81,13 @@ class PlatformThread {
 public:
     PlatformThread() = default;
 
-    /// @brief Destroys the object; the thread must already have been joined
-    ~PlatformThread() = default;
+    /// @brief Joins the thread if the owner did not
+    /// @note Callers should still join() explicitly, where they can sequence the join
+    /// against whatever the thread touches. This is a backstop so an abandoned thread
+    /// cannot outlive the argument it was handed or leak its task.
+    ~PlatformThread() {
+        this->join();
+    }
 
     PlatformThread(const PlatformThread&) = delete;
     PlatformThread& operator=(const PlatformThread&) = delete;
@@ -88,7 +95,8 @@ public:
     /// @brief Creates and starts the thread
     /// On ESP-IDF, applies config via esp_pthread_set_cfg() and restores the calling
     /// thread's previous configuration afterwards, so the caller's environment is left
-    /// exactly as it was found.
+    /// exactly as it was found. A configuration the platform rejects is not fatal: the
+    /// thread is still created, using the platform defaults.
     /// @note Never aborts on failure, unlike constructing a std::thread.
     /// @param config Creation-time thread settings
     /// @param entry Thread entry point
@@ -100,16 +108,18 @@ public:
             return false;
         }
 
-        if (!this->apply_thread_config(config)) {
-            return false;
-        }
+        bool applied = this->apply_thread_config(config);
 
         int err = pthread_create(&this->handle_, nullptr, entry, arg);
 
-        this->restore_thread_config();
+        // Nothing was changed when the configuration was rejected, so there is nothing to
+        // put back
+        if (applied) {
+            this->restore_thread_config();
+        }
 
         if (err != 0) {
-            MD_LOGE("micro_decoder.thread", "Failed to create thread '%s': error %d",
+            MD_LOGE(THREAD_TAG, "Failed to create thread '%s': error %d",
                     config.name != nullptr ? config.name : "?", err);
             return false;
         }
@@ -137,8 +147,11 @@ private:
 #ifdef ESP_PLATFORM
 
     /// @brief Applies config to the calling thread, saving whatever was configured before
+    /// @note A rejected configuration leaves the calling thread's settings untouched, so the
+    /// thread is created with the platform defaults rather than not at all.
     /// @param config Creation-time thread settings
-    /// @return true if the configuration was accepted by esp_pthread_set_cfg()
+    /// @return true if the configuration was accepted by esp_pthread_set_cfg(), which is
+    /// also whether restore_thread_config() has anything to undo
     bool apply_thread_config(const ThreadConfig& config) {
         this->had_previous_cfg_ = (esp_pthread_get_cfg(&this->previous_cfg_) == ESP_OK);
 
@@ -152,7 +165,7 @@ private:
 
         esp_err_t err = esp_pthread_set_cfg(&cfg);
         if (err != ESP_OK) {
-            MD_LOGE("micro_decoder.thread", "Rejected thread config for '%s': %s",
+            MD_LOGW(THREAD_TAG, "Rejected thread config for '%s' (%s); using defaults",
                     config.name != nullptr ? config.name : "?", esp_err_to_name(err));
             return false;
         }
@@ -170,8 +183,7 @@ private:
             this->had_previous_cfg_ ? this->previous_cfg_ : esp_pthread_get_default_config();
         esp_err_t err = esp_pthread_set_cfg(&restored);
         if (err != ESP_OK) {
-            MD_LOGW("micro_decoder.thread", "Failed to restore caller thread config: %s",
-                    esp_err_to_name(err));
+            MD_LOGW(THREAD_TAG, "Failed to restore caller thread config: %s", esp_err_to_name(err));
         }
     }
 

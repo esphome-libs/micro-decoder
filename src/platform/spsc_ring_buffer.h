@@ -90,6 +90,9 @@ public:
     /// @param timeout_ms Maximum time to wait for space in milliseconds
     /// @return Number of bytes actually written
     size_t write(const void* data, size_t len, uint32_t timeout_ms) {
+        if (this->handle_ == nullptr) {
+            return 0;
+        }
         // Try the full write first
         if (xRingbufferSend(this->handle_, data, len, pdMS_TO_TICKS(timeout_ms)) == pdTRUE) {
             return len;
@@ -116,6 +119,11 @@ public:
     /// @param timeout_ms Time to wait for data in milliseconds
     void receive_acquire(const uint8_t** data, size_t* acquired_len, size_t max_len,
                          uint32_t timeout_ms) {
+        if (this->handle_ == nullptr) {
+            *data = nullptr;
+            *acquired_len = 0;
+            return;
+        }
         size_t item_size = 0;
         void* item =
             xRingbufferReceiveUpTo(this->handle_, &item_size, pdMS_TO_TICKS(timeout_ms), max_len);
@@ -141,6 +149,9 @@ public:
     /// @brief Returns the number of bytes available to read
     /// @return Number of bytes available to read
     size_t available() const {
+        if (this->handle_ == nullptr) {
+            return 0;
+        }
         UBaseType_t waiting = 0;
         vRingbufferGetInfo(this->handle_, nullptr, nullptr, nullptr, nullptr, &waiting);
         return static_cast<size_t>(waiting);
@@ -231,6 +242,11 @@ public:
     /// @return Number of bytes actually written
     size_t write(const void* data, size_t len, uint32_t timeout_ms) {
         std::unique_lock<std::mutex> lock(this->mtx_);
+        if (this->storage_ == nullptr) {
+            // Nothing was created, or destroy() ran. Waiting here would never be satisfied,
+            // and an infinite timeout would block the caller forever.
+            return 0;
+        }
 
         auto has_space = [this] { return this->free_bytes_ > 0; };
         if (!has_space()) {
@@ -260,6 +276,11 @@ public:
     void receive_acquire(const uint8_t** data, size_t* acquired_len, size_t max_len,
                          uint32_t timeout_ms) {
         std::unique_lock<std::mutex> lock(this->mtx_);
+        if (this->storage_ == nullptr) {
+            *data = nullptr;
+            *acquired_len = 0;
+            return;
+        }
         auto has_data = [this] { return this->free_bytes_ < this->storage_size_; };
         if (!has_data()) {
             if (!wait_cv(lock, this->cv_read_, has_data, timeout_ms)) {

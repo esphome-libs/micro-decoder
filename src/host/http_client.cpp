@@ -56,12 +56,13 @@ public:
     }
 
     /// @brief Opens an HTTP connection and blocks until headers arrive
-    /// @param url The URL to connect to
-    /// @param timeout_ms Connection and transfer timeout in milliseconds; 0 uses a platform default
-    /// @param rx_buffer_size Unused on host (curl manages its own buffers)
+    /// @note request.rx_buffer_size and request.read_timeout_ms are unused here: curl manages
+    /// its own buffers and read() never blocks.
+    /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status), false on connection error or non-2xx status
-    bool open(const std::string& url, uint32_t timeout_ms, [[maybe_unused]] size_t rx_buffer_size,
-              const std::string& user_agent, const std::string& ca_certificate) override {
+    bool open(const HttpRequest& request) override {
+        const uint32_t timeout_ms = request.connect_timeout_ms;
+
         this->close();
 
         this->easy_ = curl_easy_init();
@@ -92,16 +93,16 @@ public:
         this->cancelled_ = false;
         this->response_ = HttpResponse{};
 
-        curl_easy_setopt(this->easy_, CURLOPT_URL, url.c_str());
-        if (!user_agent.empty()) {
-            curl_easy_setopt(this->easy_, CURLOPT_USERAGENT, user_agent.c_str());
+        curl_easy_setopt(this->easy_, CURLOPT_URL, request.url.c_str());
+        if (!request.user_agent.empty()) {
+            curl_easy_setopt(this->easy_, CURLOPT_USERAGENT, request.user_agent.c_str());
         }
-        if (!ca_certificate.empty()) {
+        if (!request.ca_certificate.empty()) {
 #ifdef CURLOPT_CAINFO_BLOB
             // CURL_BLOB_COPY: libcurl copies the data immediately, so .data() lifetime is fine.
             curl_blob blob{
-                static_cast<void*>(const_cast<char*>(ca_certificate.data())),
-                ca_certificate.size(),
+                static_cast<void*>(const_cast<char*>(request.ca_certificate.data())),
+                request.ca_certificate.size(),
                 CURL_BLOB_COPY,
             };
             curl_easy_setopt(this->easy_, CURLOPT_CAINFO_BLOB, &blob);
@@ -134,6 +135,14 @@ public:
             uint64_t now = now_ms();
             if (now >= deadline) {
                 MD_LOGE(TAG, "Timeout waiting for headers");
+                this->close();
+                return false;
+            }
+
+            // Polled every POLL_TIMEOUT_MS at worst, so a caller that asks to stop mid-connect
+            // is not left waiting out the full header deadline
+            if (request.cancel_check != nullptr && request.cancel_check(request.cancel_context)) {
+                MD_LOGD(TAG, "Cancelled while waiting for headers");
                 this->close();
                 return false;
             }
@@ -231,10 +240,6 @@ public:
         }
         return this->transfer_done_ && (this->buf_read_ >= this->buf_write_);
     }
-
-    /// @brief No-op; read() drives curl without blocking and always returns promptly
-    /// @param timeout_ms Maximum time a single read() may block, in milliseconds (unused)
-    void set_read_timeout_ms(uint32_t /*timeout_ms*/) override {}
 
     /// @brief Stops the transfer and frees all curl resources
     void close() override {
