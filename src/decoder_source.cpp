@@ -418,11 +418,6 @@ void DecoderSource::set_listener(DecoderListener* listener) {
 }
 
 bool DecoderSource::play_url(const std::string& url) {
-    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
-        MD_LOGE(TAG, "No listener set; call set_listener() before play_url()");
-        return false;
-    }
-
     if (!this->impl_->initialized_) {
         MD_LOGE(TAG, "Not initialized (event flags allocation failed)");
         this->impl_->store_state(DecoderState::FAILED);
@@ -430,6 +425,12 @@ bool DecoderSource::play_url(const std::string& url) {
     }
 
     this->stop();
+
+    // Checked after stop() so an active playback is still torn down when the listener is gone
+    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
+        MD_LOGE(TAG, "No listener set; call set_listener() before play_url()");
+        return false;
+    }
 
     if (!this->impl_->ensure_ring_buffer()) {
         MD_LOGE(TAG, "Failed to allocate ring buffer");
@@ -487,11 +488,6 @@ bool DecoderSource::play_buffer(const uint8_t* data, size_t length, AudioFileTyp
         return false;
     }
 
-    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
-        MD_LOGE(TAG, "No listener set; call set_listener() before play_buffer()");
-        return false;
-    }
-
     if (!this->impl_->initialized_) {
         MD_LOGE(TAG, "Not initialized (event flags allocation failed)");
         this->impl_->store_state(DecoderState::FAILED);
@@ -499,6 +495,12 @@ bool DecoderSource::play_buffer(const uint8_t* data, size_t length, AudioFileTyp
     }
 
     this->stop();
+
+    // Checked after stop() so an active playback is still torn down when the listener is gone
+    if (this->impl_->listener.load(std::memory_order_acquire) == nullptr) {
+        MD_LOGE(TAG, "No listener set; call set_listener() before play_buffer()");
+        return false;
+    }
 
     // Clear event flags and pending notifications from any previous run
     this->impl_->event_flags.clear(ALL_FLAGS);
