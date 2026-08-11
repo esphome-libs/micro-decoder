@@ -100,13 +100,13 @@ public:
             return false;
         }
 
-        if (!apply_thread_config(config)) {
+        if (!this->apply_thread_config(config)) {
             return false;
         }
 
         int err = pthread_create(&this->handle_, nullptr, entry, arg);
 
-        restore_thread_config();
+        this->restore_thread_config();
 
         if (err != 0) {
             MD_LOGE("micro_decoder.thread", "Failed to create thread '%s': error %d",
@@ -194,14 +194,14 @@ private:
     esp_pthread_cfg_t previous_cfg_{};
 #endif
 
-    // Platform handle
+    // Pointer fields
     pthread_t handle_{};
 
-    // bool fields
-    bool started_{false};
+    // 8-bit fields
 #ifdef ESP_PLATFORM
     bool had_previous_cfg_{false};
 #endif
+    bool started_{false};
 };
 
 }  // namespace micro_decoder

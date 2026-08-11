@@ -42,6 +42,13 @@ class RingBuffer {
 public:
     RingBuffer() = default;
 
+    /// @brief Releases the ring buffer before the storage it points at is freed
+    /// @note Explicit rather than left to member destruction, which would free the storage
+    /// first.
+    ~RingBuffer() {
+        this->release();
+    }
+
     RingBuffer(const RingBuffer&) = delete;
     RingBuffer& operator=(const RingBuffer&) = delete;
 
@@ -90,10 +97,8 @@ public:
 
 private:
     // Struct fields
-    // Declaration order matters: spsc_ holds a reference to storage_, so it must be
-    // declared last and therefore destroyed first.
-    PlatformBuffer storage_;
     SpscRingBuffer spsc_;
+    PlatformBuffer storage_;
 };
 
 }  // namespace micro_decoder
