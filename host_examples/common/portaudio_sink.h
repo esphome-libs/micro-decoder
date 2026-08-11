@@ -121,6 +121,10 @@ private:
  */
 class PortAudioSink : public DecoderListener {
 public:
+    /// @brief Default drain() bound; comfortably longer than the ring buffer holds at any
+    /// supported format (16 KB is ~1 s even at 8 kHz mono 16-bit).
+    static constexpr uint32_t DEFAULT_DRAIN_TIMEOUT_MS = 2000;
+
     PortAudioSink();
     ~PortAudioSink() override;
 
@@ -142,6 +146,13 @@ public:
     /// @brief React to decoder state transitions.
     /// @param state New decoder state.
     void on_state_change(DecoderState state) override;
+
+    /// @brief Block until the output device has consumed all buffered audio.
+    /// Call after playback finishes naturally so the buffered tail plays out
+    /// before stop(); returns immediately if no stream is open. Gives up once
+    /// timeout_ms elapses so a stalled output device cannot hang the caller.
+    /// @param timeout_ms Maximum time to wait for the buffer to empty, in milliseconds.
+    void drain(uint32_t timeout_ms = DEFAULT_DRAIN_TIMEOUT_MS);
 
     /// @brief Stop playback and clear the ring buffer.
     void stop();
