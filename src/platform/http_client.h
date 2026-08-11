@@ -72,7 +72,7 @@ struct HttpRequest {
     uint32_t connect_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time a single socket read may block, in milliseconds
-    uint32_t read_timeout_ms{250};  // NOLINT(readability-magic-numbers)
+    uint32_t read_timeout_ms{500};  // NOLINT(readability-magic-numbers)
 };
 
 /**

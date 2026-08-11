@@ -273,7 +273,7 @@ struct DecoderConfig {
     /// Applies once the headers have arrived. Bounds how long stop() waits for the reader
     /// thread while a stream is running, since the reader can only observe a stop request
     /// between reads.
-    uint32_t http_read_timeout_ms{250};  // NOLINT(readability-magic-numbers)
+    uint32_t http_read_timeout_ms{500};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time to block in on_audio_write() per call (milliseconds)
     uint32_t audio_write_timeout_ms{25};  // NOLINT(readability-magic-numbers)

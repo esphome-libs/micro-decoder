@@ -49,7 +49,7 @@ enum class AudioReaderState : uint8_t {
  * @code
  * RingBuffer rb;
  * rb.create(65536);
- * AudioReader reader(4096, 5000, 250, 20, 2048, "my-agent/1.0", "");
+ * AudioReader reader(4096, 5000, 500, 20, 2048, "my-agent/1.0", "");
  * reader.set_sink(&rb);
  * if (reader.start_url("http://example.com/song.flac")) {
  *     AudioFileType type = reader.file_type();
