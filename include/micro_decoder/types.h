@@ -261,17 +261,18 @@ struct DecoderConfig {
     /// (AudioDecoder) in bytes. The decoder may reallocate its copy larger if needed.
     size_t transfer_buffer_size{8192};  // NOLINT(readability-magic-numbers)
 
-    /// @brief Total budget for connecting and fetching headers, in milliseconds
-    /// Bounds how long stop() waits while a connection is still being established. Body
-    /// reads use http_read_timeout_ms instead.
+    /// @brief Timeout for one connect and header-fetch attempt, in milliseconds
+    /// A server that accepts the connection and then takes its time -- speech synthesised on
+    /// demand, for instance -- gets up to six such attempts, each on a fresh connection, so
+    /// the worst case before play_url() reports a failure is six times this value. It also
+    /// bounds how long stop() waits while connecting, since a stop is noticed between
+    /// attempts. Body reads use http_read_timeout_ms instead.
     uint32_t http_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
 
-    /// @brief Maximum time a single HTTP socket read may block, in milliseconds (ESP-IDF only)
-    /// Bounds how long stop() waits for the reader thread once the stream is running, since
-    /// the reader can only observe a stop request between reads. Keep it well below
-    /// http_timeout_ms: a server that accepts the connection and then goes quiet would
-    /// otherwise stall stop() -- and any play_url() that calls it -- for the full connection
-    /// timeout.
+    /// @brief Maximum time a single HTTP body read may block, in milliseconds (ESP-IDF only)
+    /// Applies once the headers have arrived. Bounds how long stop() waits for the reader
+    /// thread while a stream is running, since the reader can only observe a stop request
+    /// between reads.
     uint32_t http_read_timeout_ms{250};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time to block in on_audio_write() per call (milliseconds)

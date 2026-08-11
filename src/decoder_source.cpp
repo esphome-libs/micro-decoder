@@ -17,6 +17,7 @@
 #include "audio_decoder.h"
 #include "audio_reader.h"
 #include "platform/event_flags.h"
+#include "platform/http_client.h"
 #include "platform/logging.h"
 #include "platform/thread.h"
 #include "ring_buffer.h"
@@ -267,11 +268,12 @@ struct DecoderSource::Impl {
 
     /// @brief Decoder thread entry point for URL-based playback
     void decoder_thread_func_url() {
-        // Wait for the reader to signal file type or error. The budget has to be resolved the
-        // same way the HTTP client resolves it, or a configured zero would leave the reader
-        // connecting long after this wait gave up on it.
+        // Wait for the reader to signal file type or error. http_timeout_ms bounds one connect
+        // and header-fetch cycle, and the reader spends up to HTTP_MAX_CONNECT_ATTEMPTS of
+        // them, so waiting for a single cycle would give up partway through a legitimate
+        // retry sequence and fail a stream the reader was still fetching.
         static constexpr uint32_t WAIT_MARGIN_MS = 2000;
-        uint32_t connect_budget_ms = http_connect_budget_ms(this->config.http_timeout_ms);
+        uint32_t connect_budget_ms = this->config.http_timeout_ms * HTTP_MAX_CONNECT_ATTEMPTS;
         uint32_t bits =
             this->event_flags.wait(FLAG_READER_READY | FLAG_READER_ERROR | FLAG_COMMAND_STOP, false,
                                    false, connect_budget_ms + WAIT_MARGIN_MS);
