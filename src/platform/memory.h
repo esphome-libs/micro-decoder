@@ -32,7 +32,7 @@ namespace micro_decoder {
 /// @return Pointer to allocated memory, or nullptr on failure
 inline void* platform_malloc(size_t size) {
     return heap_caps_malloc_prefer(size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
-                                   MALLOC_CAP_INTERNAL);
+                                   MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
 
 /// @brief Reallocates memory, preferring SPIRAM on ESP-IDF. Falls back to internal RAM
@@ -41,7 +41,7 @@ inline void* platform_malloc(size_t size) {
 /// @return Pointer to allocated memory, or nullptr on failure
 inline void* platform_realloc(void* ptr, size_t size) {
     return heap_caps_realloc_prefer(ptr, size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
-                                    MALLOC_CAP_INTERNAL);
+                                    MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
 
 /// @brief Frees memory allocated by platform_malloc or platform_realloc
