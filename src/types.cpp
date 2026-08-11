@@ -64,6 +64,22 @@ static AudioFileType type_from_content_type(const char* content_type) {
         }
         return false;
     };
+    // Case-insensitive substring match that skips a match followed by "url" or "ts", the two
+    // suffixes that name a different format rather than raw MPEG audio: the M3U playlists
+    // audio/mpegurl and audio/x-mpegurl, and the MPEG-TS container audio/mpegts. Only those
+    // suffixes are rejected, so legacy aliases such as audio/mpeg3 still match.
+    [[maybe_unused]] auto contains_mpeg_audio_type = [&](const char* needle) -> bool {
+        size_t needle_len = strlen(needle);
+        const char* pos = content_type;
+        while ((pos = strcasestr(pos, needle)) != nullptr) {
+            if (strncasecmp(pos + needle_len, "url", 3) != 0 &&
+                strncasecmp(pos + needle_len, "ts", 2) != 0) {
+                return true;
+            }
+            pos += 1;
+        }
+        return false;
+    };
 
 #ifdef MICRO_DECODER_CODEC_FLAC
     if (contains("audio/flac") || contains("audio/x-flac")) {
@@ -71,10 +87,9 @@ static AudioFileType type_from_content_type(const char* content_type) {
     }
 #endif
 #ifdef MICRO_DECODER_CODEC_MP3
-    // Token-bounded so the M3U playlist types audio/mpegurl and audio/x-mpegurl
-    // do not match as MP3
-    if (contains_token("audio/mpeg") || contains_token("audio/mp3") ||
-        contains_token("audio/x-mpeg")) {
+    // Suffix-aware so the M3U playlist and MPEG-TS types do not match as MP3
+    if (contains_mpeg_audio_type("audio/mpeg") || contains_mpeg_audio_type("audio/mp3") ||
+        contains_mpeg_audio_type("audio/x-mpeg")) {
         return AudioFileType::MP3;
     }
 #endif
