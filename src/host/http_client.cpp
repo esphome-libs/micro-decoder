@@ -397,18 +397,30 @@ static size_t curl_header_callback(char* buffer, size_t size, size_t nitems, voi
         }
     }
 
-    // Note whether this response carries a Location: curl only follows a 3xx that has one
+    // Note whether this response carries a Location with a value: curl trims the value and
+    // ignores an empty one, so an empty Location is as unfollowable as a missing one
     static constexpr char LOC_PREFIX[] = "location:";
     static constexpr size_t LOC_PREFIX_LEN = sizeof(LOC_PREFIX) - 1;
     if (total > LOC_PREFIX_LEN && strncasecmp(buffer, LOC_PREFIX, LOC_PREFIX_LEN) == 0) {
-        self->location_seen_ = true;
+        const char* val = buffer + LOC_PREFIX_LEN;
+        const char* end = buffer + total;
+        while (val < end && (*val == ' ' || *val == '\t')) {
+            ++val;
+        }
+        while (end > val &&
+               (end[-1] == '\r' || end[-1] == '\n' || end[-1] == ' ' || end[-1] == '\t')) {
+            --end;
+        }
+        if (val < end) {
+            self->location_seen_ = true;
+        }
     }
 
     // Blank line signals end of headers. Only the final response counts: for 1xx
     // (informational) and for a 3xx carrying a Location (followed via
     // CURLOPT_FOLLOWLOCATION) curl continues with another response, so keep waiting
-    // for its headers. A 3xx without a Location is nothing curl can follow, so it is
-    // the final response and must not stall open() until its header deadline.
+    // for its headers. A 3xx without a usable Location is nothing curl can follow, so it
+    // is the final response and must not stall open() until its header deadline.
     if ((total == 2 && buffer[0] == '\r' && buffer[1] == '\n') ||
         (total == 1 && buffer[0] == '\n')) {
         static constexpr int HTTP_INFORMATIONAL_MIN = 100;
