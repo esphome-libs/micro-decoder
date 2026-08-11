@@ -25,9 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install dependencies
         run: |
@@ -46,20 +46,80 @@ jobs:
           sudo apt-get install -y clang-tidy-18 libcurl4-openssl-dev portaudio19-dev
 
       - name: Cache FetchContent dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/_deps
           key: fetchcontent-${{ hashFiles('cmake/host.cmake') }}
 
       - name: Run clang-tidy
+        env:
+          CLANG_TIDY: clang-tidy-18
         run: ./script/clang-tidy.sh
+
+  include-check:
+    name: Include check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tools-18 libcurl4-openssl-dev portaudio19-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/check_includes/_deps
+          key: fetchcontent-include-check-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Run include check
+        env:
+          CLANG_INCLUDE_CLEANER: clang-include-cleaner-18
+        run: ./script/check-includes.sh
+
+  cppcheck:
+    name: Cppcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Pin cppcheck and build it from source: ubuntu-latest's apt package lags
+      # by several minor versions and produces different findings than the
+      # version developers run locally (Homebrew). Bump deliberately, in step
+      # with local installs. The build is cached, so only the first run per
+      # version pays the compile.
+      CPPCHECK_VERSION: "2.21.0"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Cache pinned cppcheck
+        id: cache-cppcheck
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/cppcheck-install
+          key: cppcheck-${{ env.CPPCHECK_VERSION }}-${{ runner.os }}
+
+      - name: Build pinned cppcheck
+        if: steps.cache-cppcheck.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$CPPCHECK_VERSION" https://github.com/danmar/cppcheck /tmp/cppcheck
+          cmake -S /tmp/cppcheck -B /tmp/cppcheck/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/cppcheck-install"
+          cmake --build /tmp/cppcheck/build -j"$(nproc)"
+          cmake --install /tmp/cppcheck/build
+
+      - name: Add pinned cppcheck to PATH
+        run: echo "$HOME/cppcheck-install/bin" >> "$GITHUB_PATH"
+
+      - name: Run cppcheck
+        run: ./script/cppcheck.sh
 
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install dependencies
         run: |
@@ -67,13 +127,13 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev portaudio19-dev
 
       - name: Cache FetchContent dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/_deps
           key: fetchcontent-${{ hashFiles('cmake/host.cmake') }}
 
       - name: Configure CMake
-        run: cmake -B build -DENABLE_WERROR=ON
+        run: cmake -B build -DENABLE_SANITIZERS=ON -DENABLE_WERROR=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -83,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install dependencies
         run: |
@@ -91,7 +151,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Cache FetchContent dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/build/_deps
           key: fetchcontent-tests-${{ hashFiles('cmake/host.cmake') }}
@@ -110,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install dependencies
         run: |
@@ -118,7 +178,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Cache FetchContent dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/build-tsan/_deps
           key: fetchcontent-tests-tsan-${{ hashFiles('cmake/host.cmake') }}
@@ -145,14 +205,14 @@ jobs:
           - example: decode_benchmark
             environments: esp32,esp32s3
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
       - name: Cache PlatformIO
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.platformio
@@ -165,6 +225,9 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
+      # This is the only build that compiles the component's ESP-only code paths, so it is
+      # where their warnings have to be errors. The example's platformio.ini turns ENABLE_WERROR
+      # on through board_build.cmake_extra_args against a pinned platform version.
       - name: Build ${{ matrix.example }}
         run: |
           IFS=',' read -ra ENVS <<< "${{ matrix.environments }}"
@@ -172,3 +235,31 @@ jobs:
             echo "Building environment: $env"
             pio run -d examples/${{ matrix.example }} -e "$env"
           done
+
+  # Single aggregating status for branch protection: require only "CI success" instead of every job.
+  # always() so it reports even when a job fails; skipped dependencies are treated as passing (only
+  # failure/cancelled blocks). New jobs added above are covered once listed under needs.
+  ci-success:
+    name: CI success
+    if: always()
+    needs:
+      - pre-commit
+      - lint
+      - include-check
+      - cppcheck
+      - build
+      - test
+      - test-tsan
+      - platformio
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "One or more CI jobs failed or were cancelled:"
+          echo '${{ toJSON(needs) }}'
+          exit 1
+
+      - name: Report success
+        run: echo "All required CI jobs passed (skipped jobs are allowed)."

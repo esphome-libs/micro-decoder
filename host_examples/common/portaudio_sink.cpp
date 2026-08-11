@@ -36,8 +36,8 @@ size_t PortAudioRingBuffer::write(const uint8_t* data, size_t len) {
     size_t read_pos = this->read_pos_.load(std::memory_order_acquire);
 
     size_t used = (write_pos - read_pos + this->capacity_) % this->capacity_;
-    size_t free_space = this->capacity_ - 1 - used;
-    size_t to_write = std::min(len, free_space);
+    size_t free_bytes = this->capacity_ - 1 - used;
+    size_t to_write = std::min(len, free_bytes);
 
     if (to_write == 0) {
         return 0;

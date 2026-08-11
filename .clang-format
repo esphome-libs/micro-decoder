@@ -1,4 +1,4 @@
-# micro-decoder clang-format configuration
+# microDecoder clang-format configuration
 # Based on existing code style
 
 Language: Cpp

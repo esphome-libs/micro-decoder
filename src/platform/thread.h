@@ -29,6 +29,7 @@
 
 #ifdef ESP_PLATFORM
 
+#include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_pthread.h>
 
@@ -111,6 +112,7 @@ public:
         // Refuse to spawn under a configuration we could not pin down; inheriting whatever the
         // calling thread happened to have set is how a worker ends up with an unrelated stack
         // size or priority
+        // cppcheck-suppress knownConditionTrueFalse  // always true on host, can fail on ESP
         if (!this->apply_thread_config(config)) {
             MD_LOGE(THREAD_TAG, "Failed to configure thread '%s'",
                     config.name != nullptr ? config.name : "?");
@@ -162,7 +164,8 @@ private:
 
         esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
         cfg.stack_size = config.stack_size;
-        cfg.prio = config.priority;
+        // esp_pthread_cfg_t::prio is unsigned; FreeRTOS priorities are never negative
+        cfg.prio = static_cast<size_t>(config.priority);
         cfg.thread_name = config.name;
         if (config.stack_in_psram) {
             cfg.stack_alloc_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
@@ -206,11 +209,13 @@ private:
     /// @brief No-op on host; threads use the OS-default stack and scheduling
     /// @param config Creation-time thread settings (unused)
     /// @return Always true
+    // cppcheck-suppress functionStatic  // no-op only on host; the ESP branch uses previous_cfg_
     bool apply_thread_config(const ThreadConfig& /*config*/) {
         return true;
     }
 
     /// @brief No-op on host; nothing global is modified by apply_thread_config()
+    // cppcheck-suppress functionStatic  // no-op only on host; the ESP branch uses previous_cfg_
     void restore_thread_config() {}
 
 #endif  // ESP_PLATFORM

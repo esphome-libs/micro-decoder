@@ -17,13 +17,14 @@
 #include "platform/logging.h"
 #include "platform/memory.h"
 #include <curl/curl.h>
-#include <strings.h>
+#include <strings.h>  // IWYU pragma: keep  (strncasecmp; libc puts the declaration in a private header on macOS)
 
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstring>
 #include <string>
+#include <system_error>
 
 namespace micro_decoder {
 
@@ -340,6 +341,8 @@ private:
 // Callbacks
 // ============================================================================
 
+// cppcheck-suppress constParameterCallback  // libcurl fixes this signature; a const ptr
+// would not match curl_write_callback and CURLOPT_WRITEFUNCTION
 static size_t curl_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* self = static_cast<CurlHttpClient*>(userdata);
     size_t total = size * nmemb;

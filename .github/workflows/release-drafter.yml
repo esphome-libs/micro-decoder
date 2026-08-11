@@ -5,9 +5,10 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: read
+# Release automation routes every repo operation (release-drafter, checkout, and the version-bump
+# push) through the GitHub App token generated below, so the default GITHUB_TOKEN is unused here.
+# Grant it no permissions at all. GitHub always mints the token; the empty set just strips its powers.
+permissions: {}
 
 jobs:
   release-drafter:
@@ -17,19 +18,19 @@ jobs:
     steps:
       - name: Generate a token
         id: generate-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.ESPHOME_GITHUB_APP_ID }}
           private-key: ${{ secrets.ESPHOME_GITHUB_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          token: ${{ steps.generate-token.outputs.token }}
-
-      - uses: release-drafter/release-drafter@3a7fb5c85b80b1dda66e1ccb94009adbbd32fce3 # v7.0.0
+      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
         id: drafter
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Update version files
         run: |
@@ -41,7 +42,6 @@ jobs:
           if ! git diff --quiet; then
             git config --global user.name "esphomebot"
             git config --global user.email "68923041+esphomebot@users.noreply.github.com"
-            git add CMakeLists.txt idf_component.yml
-            git commit -m "Bump version to ${{ steps.drafter.outputs.resolved_version }}"
+            git commit -am "Bump version to ${{ steps.drafter.outputs.resolved_version }}"
             git push
           fi

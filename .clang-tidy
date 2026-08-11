@@ -1,5 +1,5 @@
-# micro-decoder clang-tidy configuration
-# C++17, embedded-friendly checks
+# microDecoder clang-tidy configuration
+# C++17 compatible, embedded-friendly checks
 
 Checks: >
   -*,
@@ -71,10 +71,6 @@ CheckOptions:
     value: lower_case
   - key: readability-identifier-naming.MethodCase
     value: lower_case
-  - key: readability-identifier-naming.PrivateMethodCase
-    value: lower_case
-  - key: readability-identifier-naming.PrivateMethodSuffix
-    value: ''
   - key: readability-identifier-naming.ParameterCase
     value: lower_case
   - key: readability-identifier-naming.VariableCase

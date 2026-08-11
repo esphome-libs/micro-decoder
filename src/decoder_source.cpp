@@ -16,6 +16,7 @@
 
 #include "audio_decoder.h"
 #include "audio_reader.h"
+#include "micro_decoder/types.h"
 #include "platform/event_flags.h"
 #include "platform/http_client.h"
 #include "platform/logging.h"

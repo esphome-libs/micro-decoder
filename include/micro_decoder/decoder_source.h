@@ -24,6 +24,17 @@
 #include <memory>
 #include <string>
 
+// Marks functions whose return value must not be ignored (playback start reports failure only
+// through its return value). The library builds at C++17, so [[nodiscard]] always applies; the
+// fallbacks keep the macro correct for a consumer compiling this header at an older standard.
+#if defined(__cplusplus) && __cplusplus >= 201703L
+#define MICRO_DECODER_NODISCARD [[nodiscard]]
+#elif defined(__GNUC__)
+#define MICRO_DECODER_NODISCARD __attribute__((warn_unused_result))
+#else
+#define MICRO_DECODER_NODISCARD
+#endif
+
 namespace micro_decoder {
 
 /**
@@ -89,6 +100,7 @@ public:
     /// initialization failure, if the ring buffer cannot be allocated, or if either thread
     /// cannot be created. Connection and decode errors are reported asynchronously via
     /// on_state_change(FAILED).
+    MICRO_DECODER_NODISCARD
     bool play_url(const std::string& url);
 
     /// @brief Starts decoding audio from an in-memory buffer
@@ -103,6 +115,7 @@ public:
     /// after stopping any active playback. Returns false (and transitions to FAILED) on
     /// initialization failure or if the decoder thread cannot be created. Decode errors are
     /// reported asynchronously via on_state_change(FAILED).
+    MICRO_DECODER_NODISCARD
     bool play_buffer(const uint8_t* data, size_t length, AudioFileType type);
 
     /// @brief Requests a stop and waits for all threads to finish

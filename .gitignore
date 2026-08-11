@@ -97,3 +97,6 @@ vgcore.*
 *.gcov
 coverage/
 htmlcov/
+
+# Local marker recording which internal conventions version is used for this project.
+.conventions-version

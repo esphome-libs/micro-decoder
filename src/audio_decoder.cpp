@@ -294,13 +294,14 @@ AudioDecoder::FileDecoderState AudioDecoder::decode_flac(const uint8_t* data, si
 
     if (result == micro_flac::FLAC_DECODER_SUCCESS) {
         if (samples_decoded > 0 && this->stream_info_.has_value()) {
-            this->output_buffer_.increase_length(
-                this->stream_info_.value().samples_to_bytes(samples_decoded));
+            this->output_buffer_.increase_length(this->stream_info_.value().samples_to_bytes(
+                static_cast<uint32_t>(samples_decoded)));
         }
     } else if (result == micro_flac::FLAC_DECODER_HEADER_READY) {
         const auto& info = this->flac_decoder_->get_stream_info();
         this->stream_info_ =
-            AudioStreamInfo(info.bits_per_sample(), info.num_channels(), info.sample_rate());
+            AudioStreamInfo(static_cast<uint8_t>(info.bits_per_sample()),
+                            static_cast<uint8_t>(info.num_channels()), info.sample_rate());
 
         this->free_buffer_required_ =
             static_cast<size_t>(this->flac_decoder_->get_output_buffer_size_samples()) *
@@ -494,8 +495,8 @@ AudioDecoder::FileDecoderState AudioDecoder::decode_wav(const uint8_t* data, siz
 
     if (result == micro_wav::WAV_DECODER_SUCCESS) {
         if (samples_decoded > 0 && this->stream_info_.has_value()) {
-            this->output_buffer_.increase_length(
-                this->stream_info_.value().samples_to_bytes(samples_decoded));
+            this->output_buffer_.increase_length(this->stream_info_.value().samples_to_bytes(
+                static_cast<uint32_t>(samples_decoded)));
         }
     } else if (result == micro_wav::WAV_DECODER_HEADER_READY) {
         this->stream_info_ =

@@ -137,6 +137,7 @@ public:
 
     /// @brief Creates the event flags group
     /// @return true if the group was created successfully
+    // cppcheck-suppress functionStatic  // no-op only on host; the ESP branch stores handle_
     bool create() {
         return true;
     }

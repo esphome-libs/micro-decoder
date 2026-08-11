@@ -337,8 +337,8 @@ private:
     /// @param timeout_ms Maximum time to wait in milliseconds; UINT32_MAX waits indefinitely
     /// @return true if the predicate was satisfied before the timeout, false if timed out
     template <typename Predicate>
-    bool wait_cv(std::unique_lock<std::mutex>& lock, std::condition_variable& cv, Predicate pred,
-                 uint32_t timeout_ms) {
+    static bool wait_cv(std::unique_lock<std::mutex>& lock, std::condition_variable& cv,
+                        Predicate pred, uint32_t timeout_ms) {
         if (timeout_ms == 0) {
             return false;
         }

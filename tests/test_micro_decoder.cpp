@@ -341,21 +341,9 @@ public:
         return "http://127.0.0.1:" + std::to_string(this->port_) + path;
     }
 
-    uint16_t port() const {
-        return this->port_;
-    }
-
-    size_t bytes_sent() const {
-        return this->bytes_sent_.load();
-    }
-
     // True once a send() failed because the client hung up mid-body
     bool client_disconnected() const {
         return this->client_disconnected_.load();
-    }
-
-    int connections() const {
-        return this->connections_.load();
     }
 
 private:
@@ -712,7 +700,7 @@ static bool test_ring_buffer_basic() {
     CHECK_EQ(rb.available(), 0u);
 
     // Oversized write is truncated to the free space
-    uint8_t big[100] = {0};
+    const uint8_t big[100] = {0};
     CHECK_EQ(rb.write(big, 100, 100), 64u);
     CHECK_EQ(rb.available(), 64u);
 

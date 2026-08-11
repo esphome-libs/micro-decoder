@@ -57,7 +57,13 @@ target_include_directories(test_micro_decoder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_options(test_micro_decoder PRIVATE
     -Wall
     -Wextra
+    -Wpedantic
     -Wshadow
+    -Wnon-virtual-dtor
+    -Wconversion
+    -Wsign-conversion
+    -Wdouble-promotion
+    -Wformat=2
     -Wimplicit-fallthrough
     # Any function not declared in a header must be static; keeps
     # -Wunused-function able to see dead internal functions. Clang and GCC

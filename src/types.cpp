@@ -200,6 +200,7 @@ const char* audio_file_type_to_string(AudioFileType file_type) {
 
 AudioFileType detect_audio_file_type(const char* content_type, const char* url) {
     AudioFileType type = type_from_content_type(content_type);
+    // cppcheck-suppress knownConditionTrueFalse  // only NONE when no codec is compiled in
     if (type != AudioFileType::NONE) {
         return type;
     }
