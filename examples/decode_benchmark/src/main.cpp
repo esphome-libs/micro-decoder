@@ -34,7 +34,7 @@
 #include "test_audio_vorbis.h"
 #include "test_audio_wav.h"
 
-#include <cinttypes>
+#include <cstdint>
 #include <cstdio>
 
 using namespace micro_decoder;

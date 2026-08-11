@@ -50,6 +50,11 @@ include(${MICRO_DECODER_COMPONENT_DIR}/cmake/sources.cmake)
 if(ESP_IDF_BUILD)
     include(${MICRO_DECODER_COMPONENT_DIR}/cmake/esp-idf.cmake)
 
+    # Same opt-in switch as the host build: off by default so a consumer building the component
+    # from the registry only ever gets warnings, on in the pinned CI ESP build (see
+    # examples/decode_benchmark/platformio.ini) where the toolchain is fixed.
+    option(ENABLE_WERROR "Treat warnings as errors" OFF)
+
     # Collect sources
     micro_decoder_get_sources(${MICRO_DECODER_COMPONENT_DIR})
 

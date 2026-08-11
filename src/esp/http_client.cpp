@@ -15,6 +15,7 @@
 #include "platform/http_client.h"
 
 #include "platform/logging.h"
+#include <esp_err.h>
 #include <esp_http_client.h>
 
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE

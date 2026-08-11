@@ -32,8 +32,10 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <string>
 #include <thread>
 #include <vector>

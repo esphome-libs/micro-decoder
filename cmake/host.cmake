@@ -24,13 +24,22 @@ function(micro_decoder_configure_host TARGET_LIB SOURCE_DIR)
         -Wpedantic
         -Wshadow
         -Wnon-virtual-dtor
+        -Wconversion
+        -Wsign-conversion
+        -Wdouble-promotion
+        -Wformat=2
+        -Wimplicit-fallthrough
+        # Any function not declared in a header must be static; keeps
+        # -Wunused-function able to see dead internal functions. Clang and GCC
+        # spell the C++ variant of this check differently.
+        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wmissing-prototypes>
+        $<$<CXX_COMPILER_ID:GNU>:-Wmissing-declarations>
+        # Require static_cast/reinterpret_cast over C-style casts
         -Wold-style-cast
+        $<$<BOOL:${ENABLE_WERROR}>:-Werror>
     )
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(${TARGET_LIB} PRIVATE -Wno-gnu-zero-variadic-macro-arguments)
-    endif()
-    if(ENABLE_WERROR)
-        target_compile_options(${TARGET_LIB} PRIVATE -Werror)
     endif()
     if(ENABLE_SANITIZERS)
         target_compile_options(${TARGET_LIB} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
