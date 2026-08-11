@@ -15,7 +15,10 @@ option(ENABLE_WERROR "Treat warnings as errors" OFF)
 
 if(ENABLE_SANITIZERS)
     message(STATUS "Building with AddressSanitizer and UndefinedBehaviorSanitizer")
-    set(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-omit-frame-pointer -g")
+    # -fno-sanitize-recover=undefined makes UBSan abort instead of printing and continuing,
+    # so a UB finding fails the test's exit code rather than being reported as a pass
+    set(SANITIZER_FLAGS
+        "-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SANITIZER_FLAGS}")
