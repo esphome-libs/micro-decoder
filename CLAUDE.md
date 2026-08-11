@@ -40,7 +40,7 @@ src/
   platform/
     logging.h            - MD_LOG{E,W,I,D} → ESP_LOG* or fprintf
     memory.h             - platform_malloc/free + PlatformBuffer RAII
-    thread.h             - platform_configure_thread (ESP: esp_pthread_set_cfg / host: no-op)
+    thread.h             - PlatformThread (pthreads; ESP applies/restores esp_pthread cfg)
     event_flags.h        - EventFlags (ESP: xEventGroup / host: mutex+cv)
     spsc_ring_buffer.h   - SpscRingBuffer (ESP: FreeRTOS BYTEBUF / host: mutex+cv)
     http_client.h        - HttpClient abstract interface
