@@ -30,19 +30,66 @@ struct HttpResponse {
     std::string content_type;
 };
 
+/// @brief Polled while open() blocks; returns true to abandon the request
+/// @note Runs on the thread that called open(), and must not block.
+/// @param context The cancel_context supplied in HttpRequest
+using HttpCancelCheck = bool (*)(void* context);
+
+/// @brief Number of connect and header-fetch cycles open() may spend before giving up
+/// @note connect_timeout_ms bounds one cycle, so the worst case open() blocks for is the
+/// product of the two. Callers sizing their own waits around open() have to use the product.
+static constexpr uint32_t HTTP_MAX_CONNECT_ATTEMPTS = 6;
+
+/**
+ * @brief Everything an HttpClient needs to open a streaming request
+ *
+ * @note The two timeouts are separate because the phases want different bounds. Connecting
+ * and collecting headers tolerates a long wait, while a body read must return often enough
+ * for the caller to notice a stop request between reads.
+ */
+struct HttpRequest {
+    /// @brief HTTP or HTTPS URL of the stream
+    std::string url;
+
+    /// @brief User-Agent header value; empty uses the platform client's default
+    std::string user_agent;
+
+    /// @brief PEM-encoded CA certificate(s) used to verify HTTPS servers
+    /// Empty falls back to the platform default trust store (certificate bundle on ESP-IDF,
+    /// system trust store on host). Ignored for plain HTTP.
+    std::string ca_certificate;
+
+    /// @brief Polled while open() blocks; nullptr disables cancellation
+    HttpCancelCheck cancel_check{nullptr};
+
+    /// @brief Opaque argument passed to cancel_check
+    void* cancel_context{nullptr};
+
+    /// @brief Size of the platform HTTP receive buffer in bytes (ESP-IDF only)
+    size_t rx_buffer_size{2048};  // NOLINT(readability-magic-numbers)
+
+    /// @brief Timeout for one connect and header-fetch attempt, in milliseconds
+    uint32_t connect_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
+
+    /// @brief Maximum time a single socket read may block, in milliseconds
+    uint32_t read_timeout_ms{500};  // NOLINT(readability-magic-numbers)
+};
+
 /**
  * @brief Abstract streaming HTTP client
  *
  * Implementations live in src/esp/http_client.cpp and src/host/http_client.cpp.
  *
  * Typical usage:
- *   1. Call open() with a URL and timeout.
+ *   1. Call open() with a fully populated HttpRequest.
  *   2. Call response_info() to inspect the HTTP status and Content-Type.
  *   3. Loop calling read() until is_complete() returns true.
  *   4. Call close() to release resources.
  *
  * @code
- *   client.open(url, timeout_ms);
+ *   HttpRequest request;
+ *   request.url = url;
+ *   client.open(request);
  *   auto info = client.response_info();
  *   while (!client.is_complete()) {
  *       int n = client.read(buf, sizeof(buf));
@@ -57,17 +104,19 @@ public:
     virtual ~HttpClient() = default;
 
     /// @brief Opens the URL and fetches headers
-    /// @param url      The URL to connect to
-    /// @param timeout_ms  Connection and transfer timeout in milliseconds; 0 uses a platform
-    /// default
-    /// @param rx_buffer_size  Size of the platform HTTP receive buffer in bytes (ESP-IDF only)
-    /// @param user_agent  Optional User-Agent header value; empty string uses the platform default
-    /// @param ca_certificate  Optional PEM-encoded CA certificate(s) used to verify HTTPS
-    /// servers. Empty string falls back to the platform default trust store (cert bundle on
-    /// ESP-IDF, system trust store on host). Ignored for plain HTTP.
-    /// @return true on success (2xx or 3xx handled internally)
-    virtual bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
-                      const std::string& user_agent, const std::string& ca_certificate) = 0;
+    /// Blocks until the headers arrive, the request fails, or request.cancel_check returns
+    /// true. Redirects are followed internally. A server that is slow to produce headers is
+    /// given up to HTTP_MAX_CONNECT_ATTEMPTS times request.connect_timeout_ms in total before
+    /// the open fails. How that budget is spent is the implementation's choice: the ESP-IDF
+    /// client retries on fresh connections because ESP_ERR_HTTP_EAGAIN leaves its handle
+    /// unable to report headers that arrive later, while the host client simply waits out the
+    /// whole budget on one connection.
+    /// @note cancel_check is polled at least once per request.connect_timeout_ms, so a caller
+    /// asking to stop mid-connect waits at most that long rather than the whole budget.
+    /// @note request.read_timeout_ms applies only once the headers are in, to body reads.
+    /// @param request Connection settings, timeouts, and cancellation hook
+    /// @return true on success (2xx status)
+    virtual bool open(const HttpRequest& request) = 0;
 
     /// @brief Returns response metadata (status code, Content-Type header)
     /// @note Valid after a successful open() and before close()

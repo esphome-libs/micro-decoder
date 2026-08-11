@@ -51,6 +51,10 @@ namespace micro_decoder {
  * }
  * @endcode
  *
+ * @note Every public method except state() must be called from a single thread. They are
+ * safe to call from on_state_change(), which fires on that same thread from loop(), but
+ * calling them concurrently from another thread is not supported.
+ *
  * Non-copyable, non-movable. Uses pImpl to hide platform internals.
  */
 class DecoderSource {
@@ -80,9 +84,10 @@ public:
     /// @note Calls `stop()` first if already active.
     /// @note All public methods except state() must be called from the same thread.
     /// @param url HTTP or HTTPS URL of the audio stream
-    /// @return true if the threads were started successfully. Returns false
-    /// (and transitions to FAILED) on initialization or allocation failure.
-    /// Connection and decode errors are reported asynchronously via on_state_change(FAILED).
+    /// @return true if the threads were started successfully. Returns false (and transitions
+    /// to FAILED) on initialization failure, if the ring buffer cannot be allocated, or if
+    /// either thread cannot be created. Connection and decode errors are reported
+    /// asynchronously via on_state_change(FAILED).
     bool play_url(const std::string& url);
 
     /// @brief Starts decoding audio from an in-memory buffer
@@ -93,13 +98,19 @@ public:
     /// @param length Length of the buffer in bytes (must be > 0)
     /// @param type Audio file format of the buffer contents
     /// @return false if data is null, length is zero, or the format is unsupported
-    /// (AudioFileType::NONE). Returns false (and transitions to FAILED) on initialization
-    /// failure. Decode errors are reported asynchronously via on_state_change(FAILED).
+    /// (AudioFileType::NONE), leaving the state unchanged. Returns false (and transitions to
+    /// FAILED) on initialization failure or if the decoder thread cannot be created. Decode
+    /// errors are reported asynchronously via on_state_change(FAILED).
     bool play_buffer(const uint8_t* data, size_t length, AudioFileType type);
 
     /// @brief Requests a stop and waits for all threads to finish
     /// After stop() returns, the state is IDLE (if previously PLAYING or FAILED)
-    /// or unchanged (if already IDLE).
+    /// or unchanged (if already IDLE). The ring buffer is freed unless
+    /// DecoderConfig::persistent_ring_buffer is set, so an idle DecoderSource holds no
+    /// streaming buffers.
+    /// @note How long this blocks depends on how quickly the reader notices: roughly
+    /// DecoderConfig::http_read_timeout_ms while streaming, or up to
+    /// DecoderConfig::http_timeout_ms while a connection is still being established.
     /// @note The on_state_change(IDLE) callback is deferred; it fires on the next loop() call,
     /// not before stop() returns.
     void stop();

@@ -49,7 +49,7 @@ enum class AudioReaderState : uint8_t {
  * @code
  * RingBuffer rb;
  * rb.create(65536);
- * AudioReader reader(4096, 5000, 20, 2048, "my-agent/1.0", "");
+ * AudioReader reader(4096, 5000, 500, 20, 2048, "my-agent/1.0", "");
  * reader.set_sink(&rb);
  * if (reader.start_url("http://example.com/song.flac")) {
  *     AudioFileType type = reader.file_type();
@@ -60,8 +60,9 @@ enum class AudioReaderState : uint8_t {
 class AudioReader {
 public:
     explicit AudioReader(size_t transfer_buffer_size, uint32_t http_timeout_ms,
-                         uint32_t write_timeout_ms, size_t http_rx_buffer_size,
-                         std::string user_agent, std::string ca_certificate);
+                         uint32_t http_read_timeout_ms, uint32_t write_timeout_ms,
+                         size_t http_rx_buffer_size, std::string user_agent,
+                         std::string ca_certificate);
     ~AudioReader();
 
     AudioReader(const AudioReader&) = delete;
@@ -71,6 +72,16 @@ public:
     /// @return Detected audio file type
     AudioFileType file_type() const {
         return this->file_type_;
+    }
+
+    /// @brief Installs a callback polled while start_url() waits to connect
+    /// @note Must be called before start_url(). The callback runs on the reader's own thread
+    /// and must not block.
+    /// @param check Returns true to abandon the connection attempt; nullptr disables it
+    /// @param context Opaque argument passed to check
+    void set_cancel_check(HttpCancelCheck check, void* context) {
+        this->request_.cancel_check = check;
+        this->request_.cancel_context = context;
     }
 
     /// @brief Sets the ring buffer where raw audio data is written
@@ -92,19 +103,19 @@ public:
 
 private:
     // Struct fields
+    HttpRequest request_;
     TransferBuffer transfer_buffer_;
-    std::string user_agent_;
-    std::string ca_certificate_;
 
     // Pointer fields
     std::unique_ptr<HttpClient> client_;
     RingBuffer* ring_buffer_{nullptr};
 
     // size_t fields
-    size_t http_rx_buffer_size_;
+    /// @brief Largest read requested per run() call
+    /// Kept to one receive buffer so a single read cannot block for several read timeouts.
+    size_t max_read_size_;
 
     // 32-bit fields
-    uint32_t http_timeout_ms_;
     uint32_t write_timeout_ms_;
 
     // 8-bit fields

@@ -131,6 +131,8 @@ struct MyAudioSink : DecoderListener {
 
 `on_stream_info()` and `on_audio_write()` are called from the decoder thread. Do not call `stop()`, `play_url()`, or `play_buffer()` from these callbacks.
 
+Every public method except `state()` must be called from a single thread. Calling them concurrently from more than one thread is not supported.
+
 ## Step 2: Configure the DecoderSource
 
 `DecoderConfig` has defaults suitable for most use cases. Override fields only when needed.
@@ -139,8 +141,15 @@ struct MyAudioSink : DecoderListener {
 DecoderConfig config;
 config.ring_buffer_size    = 500 * 1024;  // 500 KB (increase for high-bitrate streams)
 config.transfer_buffer_size = 16 * 1024; // 16 KB (increase from 8 KB default)
-config.http_timeout_ms        = 5000;    // HTTP connect/read timeout
+config.http_timeout_ms        = 5000;    // HTTP connect and header timeout
+config.http_read_timeout_ms   = 500;     // Bounds how long a single body read blocks
 config.audio_write_timeout_ms = 50;      // Override default of 25 ms
+```
+
+By default the ring buffer is allocated by `play_url()` and freed by `stop()`, so an idle `DecoderSource` holds no streaming buffers. Set `persistent_ring_buffer` to allocate it once at construction and reuse it for every playback instead -- this trades the memory for moving the fragmentation-sensitive allocation to construction time rather than repeating it on every `play_url()` call. If that construction-time allocation fails it is logged, and `play_url()` falls back to allocating on demand. Either way the buffer starts each playback empty:
+
+```cpp
+config.persistent_ring_buffer = true;
 ```
 
 On ESP-IDF, you can also configure task priorities and stack sizes:
@@ -176,7 +185,9 @@ if (!ok) {
 }
 ```
 
-`play_url()` always calls `stop()` first, then spawns a reader thread (HTTP → ring buffer) and a decoder thread (ring buffer → PCM). Returns `false` if initialization failed (e.g., the constructor could not allocate event flags) or the ring buffer cannot be allocated; format and connection errors are surfaced later via `DecoderState::FAILED`.
+`play_url()` always calls `stop()` first, then spawns a reader thread (HTTP → ring buffer) and a decoder thread (ring buffer → PCM). Returns `false` if initialization failed (e.g., the constructor could not allocate event flags), if the ring buffer cannot be allocated, or if either thread cannot be created; format and connection errors are surfaced later via `DecoderState::FAILED`.
+
+On constrained targets, thread creation is the failure most worth handling: the reader stack is allocated from internal RAM, so a device short on it fails here. Surface the `false` to the user instead of treating `play_url()` as infallible.
 
 Supported schemes: `http://`, `https://`. The audio format is detected from the `Content-Type` response header, falling back to the URL file extension.
 
@@ -200,7 +211,7 @@ AudioFileType type = detect_audio_file_type(nullptr, "song.mp3");
 bool ok = decoder.play_buffer(file_data.data(), file_data.size(), type);
 ```
 
-The buffer must remain valid until `stop()` returns or the decoder is destroyed. `play_buffer()` always calls `stop()` first, then spawns only a decoder thread -- no reader thread is needed. Returns `false` if `data` is null, `length` is zero, or `type` is `AudioFileType::NONE` (state unchanged), or if initialization fails (state transitions to `FAILED`). Decode errors are surfaced later via `DecoderState::FAILED`.
+The buffer must remain valid until `stop()` returns or the decoder is destroyed. `play_buffer()` always calls `stop()` first, then spawns only a decoder thread -- no reader thread is needed. Returns `false` if `data` is null, `length` is zero, or `type` is `AudioFileType::NONE` (state unchanged), or if initialization fails or the decoder thread cannot be created (state transitions to `FAILED`). Decode errors are surfaced later via `DecoderState::FAILED`.
 
 ### Detecting the Audio Format
 
@@ -265,6 +276,10 @@ Call `stop()` to abort playback and join all threads. It is safe to call `stop()
 ```cpp
 decoder.stop();  // Blocks until reader and decoder threads have exited
 ```
+
+`stop()` also frees the ring buffer, unless `persistent_ring_buffer` is set.
+
+How long it blocks is bounded by how quickly the threads notice the request. The reader can only check between HTTP reads, so once a stream is running the worst case is roughly `http_read_timeout_ms` against a server that has gone quiet. While a connection is still being established the bound is `http_timeout_ms` instead, since a stop is noticed between connection attempts rather than during one. Lower those values if a caller driving `loop()` from a main loop cannot tolerate the pause; `play_url()` inherits them, since it calls `stop()` first.
 
 The destructor calls `stop()` automatically.
 
@@ -341,13 +356,15 @@ int main() {
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `ring_buffer_size` | `size_t` | `49152` (48 KB) | Ring buffer size in bytes between the reader and decoder threads. Larger values absorb more HTTP jitter at the cost of memory. |
+| `persistent_ring_buffer` | `bool` | `false` | Keep the ring buffer allocated for the lifetime of the `DecoderSource`. When `false`, `play_url()` allocates it and `stop()` frees it. When `true`, it is allocated once at construction and reused, trading the memory for moving the fragmentation-sensitive allocation to construction time. A construction-time failure is logged and `play_url()` falls back to allocating on demand. A reused buffer is emptied before each playback. Buffer playback never allocates a ring buffer either way. |
 | `transfer_buffer_size` | `size_t` | `8192` (8 KB) | Flat staging buffer size in bytes. Used by the reader to batch HTTP data into the ring buffer and by the decoder for its output buffer. |
-| `http_timeout_ms` | `uint32_t` | `5000` | HTTP connect and read timeout in milliseconds. |
+| `http_timeout_ms` | `uint32_t` | `5000` | Timeout for one connect and header-fetch attempt, in milliseconds. A server that is slow to produce headers gets up to six attempts, so the worst case before `play_url()` fails is six times this value. On ESP-IDF each attempt is a fresh connection; on host the budget is spent waiting on one. Also bounds how long `stop()` waits while connecting, since a stop is noticed once per attempt at worst. |
+| `http_read_timeout_ms` | `uint32_t` | `500` | Maximum time a single HTTP body read may block, in milliseconds, applied once the headers have arrived. Bounds how long `stop()` waits for the reader thread while a stream is running, since it can only observe a stop request between reads. No effect on host, where reads do not block. |
 | `http_user_agent` | `std::string` | `"micro-decoder/<version> (https://github.com/esphome-libs/micro-decoder)"` | User-Agent header value sent with streaming requests. Set to empty to fall back to the underlying HTTP client's default. |
 | `http_ca_certificate` | `std::string` | `""` | PEM-encoded CA certificate(s) used to verify HTTPS servers. Empty falls back to the platform default trust store (MbedTLS certificate bundle on ESP-IDF when `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE` is enabled; system trust store on host). Ignored for plain HTTP. |
 | `audio_write_timeout_ms` | `uint32_t` | `25` | Maximum time to block in `on_audio_write()` per call, in milliseconds. |
 | `reader_write_timeout_ms` | `uint32_t` | `25` | Maximum time the reader blocks writing to the ring buffer per call, in milliseconds. |
-| `http_rx_buffer_size` | `size_t` | `2048` | ESP-IDF HTTP client receive buffer size in bytes. ESP-IDF only. |
+| `http_rx_buffer_size` | `size_t` | `2048` | ESP-IDF HTTP client receive buffer size in bytes. Also caps how much the reader requests from a single HTTP read, so it bounds how long one read can block along with `http_read_timeout_ms`. ESP-IDF only. |
 | `reader_stack_size` | `size_t` | `5120` (5 KB) | Reader task stack size in bytes. ESP-IDF only. |
 | `decoder_stack_size` | `size_t` | `5120` (5 KB) | Decoder task stack size in bytes. ESP-IDF only. |
 | `reader_priority` | `int` | `2` | FreeRTOS priority for the reader task. ESP-IDF only. |

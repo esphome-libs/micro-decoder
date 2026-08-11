@@ -29,7 +29,7 @@ namespace micro_decoder {
 static constexpr const char* TAG = "micro_decoder.http_client";
 
 static constexpr uint8_t MAX_REDIRECTIONS = 5;
-static constexpr uint8_t MAX_HEADER_ATTEMPTS = 6;
+static constexpr uint8_t MAX_HEADER_ATTEMPTS = HTTP_MAX_CONNECT_ATTEMPTS;
 
 /// @brief Returns true if the URL begins with an "https:" scheme (case-insensitive)
 static bool url_has_https_scheme(const std::string& url) {
@@ -64,32 +64,29 @@ public:
     }
 
     /// @brief Opens an HTTP connection and begins streaming via esp_http_client
-    /// @param url The URL to connect to
-    /// @param timeout_ms Connection and transfer timeout in milliseconds; 0 uses a platform default
-    /// @param rx_buffer_size Size of the ESP-IDF HTTP receive buffer in bytes
+    /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status), false on connection error or non-2xx status
-    bool open(const std::string& url, uint32_t timeout_ms, size_t rx_buffer_size,
-              const std::string& user_agent, const std::string& ca_certificate) override {
+    bool open(const HttpRequest& request) override {
         this->close();
         this->complete_ = false;
         this->response_ = HttpResponse{};
 
         esp_http_client_config_t cfg = {};
-        cfg.url = url.c_str();
+        cfg.url = request.url.c_str();
         cfg.disable_auto_redirect = false;
         cfg.max_redirection_count = MAX_REDIRECTIONS;
         cfg.event_handler = http_event_handler;
         cfg.user_data = this;
-        cfg.buffer_size = static_cast<int>(rx_buffer_size);
+        cfg.buffer_size = static_cast<int>(request.rx_buffer_size);
         cfg.keep_alive_enable = true;
-        cfg.timeout_ms = static_cast<int>(timeout_ms);
-        if (!user_agent.empty()) {
-            cfg.user_agent = user_agent.c_str();
+        cfg.timeout_ms = static_cast<int>(request.connect_timeout_ms);
+        if (!request.user_agent.empty()) {
+            cfg.user_agent = request.user_agent.c_str();
         }
 
-        if (url_has_https_scheme(url)) {
-            if (!ca_certificate.empty()) {
-                cfg.cert_pem = ca_certificate.c_str();
+        if (url_has_https_scheme(request.url)) {
+            if (!request.ca_certificate.empty()) {
+                cfg.cert_pem = request.ca_certificate.c_str();
             } else {
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
                 cfg.crt_bundle_attach = esp_crt_bundle_attach;
@@ -111,16 +108,28 @@ public:
         }
 
         int64_t header_len = esp_http_client_fetch_headers(this->client_);
-        uint8_t attempts = 0;
+        // The fetch above is attempt one, so the loop adds MAX_HEADER_ATTEMPTS - 1 more. Starting
+        // at zero would spend one connect_timeout_ms more than the budget the decoder waits out
+        uint8_t attempts = 1;
         while (header_len < 0 && attempts < MAX_HEADER_ATTEMPTS) {
             if (header_len != -ESP_ERR_HTTP_EAGAIN) {
                 MD_LOGE(TAG, "Failed to fetch headers");
                 this->cleanup();
                 return false;
             }
+            if (request.cancel_check != nullptr && request.cancel_check(request.cancel_context)) {
+                MD_LOGD(TAG, "Cancelled while fetching headers");
+                this->cleanup();
+                return false;
+            }
             this->cleanup();
             this->response_ = HttpResponse{};
-            // cfg is unchanged across retries; cert_pem / crt_bundle_attach persist.
+            // Reconnect from a fresh state rather than calling fetch_headers() again on the
+            // same handle. ESP_ERR_HTTP_EAGAIN leaves the client in a state where it can miss
+            // headers that arrive afterwards, so the same handle may never report them however
+            // long it is polled. A slow response -- speech synthesised on demand, for instance
+            // -- depends on this. cfg is unchanged across retries; cert_pem and
+            // crt_bundle_attach persist.
             this->client_ = esp_http_client_init(&cfg);
             if (this->client_ == nullptr) {
                 MD_LOGE(TAG, "esp_http_client_init failed in retry loop");
@@ -170,6 +179,10 @@ public:
             this->cleanup();
             return false;
         }
+
+        // The headers are in, so the connect timeout has done its job. Body reads take the
+        // short timeout from here on, which is how often the reader can notice a stop request.
+        esp_http_client_set_timeout_ms(this->client_, static_cast<int>(request.read_timeout_ms));
 
         this->response_.status_code = status;
         MD_LOGD(TAG, "Connected: status=%d content-type='%s'", status,

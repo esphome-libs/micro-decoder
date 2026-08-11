@@ -140,12 +140,20 @@ public:
     /// @param size Number of bytes to allocate
     /// @return true if allocation succeeded
     bool allocate(size_t size) {
-        if (this->ptr_ != nullptr) {
-            platform_free(this->ptr_);
-        }
+        this->release();
         this->ptr_ = static_cast<uint8_t*>(platform_malloc(size));
         this->size_ = (this->ptr_ != nullptr) ? size : 0;
         return this->ptr_ != nullptr;
+    }
+
+    /// @brief Frees any held allocation and resets the buffer to empty
+    /// @note Safe to call when nothing is allocated
+    void release() {
+        if (this->ptr_ != nullptr) {
+            platform_free(this->ptr_);
+            this->ptr_ = nullptr;
+        }
+        this->size_ = 0;
     }
 
     /// @brief Resizes the buffer, preserving existing data

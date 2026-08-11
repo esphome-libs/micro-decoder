@@ -261,8 +261,20 @@ struct DecoderConfig {
     /// (AudioDecoder) in bytes. The decoder may reallocate its copy larger if needed.
     size_t transfer_buffer_size{8192};  // NOLINT(readability-magic-numbers)
 
-    /// @brief HTTP connection/read timeout in milliseconds
+    /// @brief Timeout for one connect and header-fetch attempt, in milliseconds
+    /// A server that accepts the connection and then takes its time -- speech synthesised on
+    /// demand, for instance -- is given up to six such attempts, so the worst case before
+    /// play_url() reports a failure is six times this value. On ESP-IDF each attempt is a
+    /// fresh connection; on host the budget is spent waiting on one. It also bounds how long
+    /// stop() waits while connecting, since a stop is noticed once per attempt at worst. Body
+    /// reads use http_read_timeout_ms instead.
     uint32_t http_timeout_ms{5000};  // NOLINT(readability-magic-numbers)
+
+    /// @brief Maximum time a single HTTP body read may block, in milliseconds (ESP-IDF only)
+    /// Applies once the headers have arrived. Bounds how long stop() waits for the reader
+    /// thread while a stream is running, since the reader can only observe a stop request
+    /// between reads.
+    uint32_t http_read_timeout_ms{500};  // NOLINT(readability-magic-numbers)
 
     /// @brief Maximum time to block in on_audio_write() per call (milliseconds)
     uint32_t audio_write_timeout_ms{25};  // NOLINT(readability-magic-numbers)
@@ -271,7 +283,21 @@ struct DecoderConfig {
     uint32_t reader_write_timeout_ms{25};  // NOLINT(readability-magic-numbers)
 
     /// @brief Size of the ESP-IDF HTTP client receive buffer in bytes (ESP-IDF only)
+    /// Also caps how much the reader requests from a single HTTP read, so it bounds how long
+    /// one read can block along with http_read_timeout_ms.
     size_t http_rx_buffer_size{2048};
+
+    /// @brief Keep the ring buffer allocated for the lifetime of the DecoderSource
+    /// When false (the default), the ring buffer is allocated by play_url() and freed by
+    /// stop(), so an idle DecoderSource holds no ring buffer memory. When true, it is
+    /// allocated once at construction and reused by every playback, which trades the memory
+    /// for moving the fragmentation-sensitive allocation to construction time instead of
+    /// every play_url() call -- as long as that allocation succeeds. A failure there is
+    /// logged and play_url() falls back to allocating on demand, carrying the same
+    /// fragmentation risk as the false case for that playback. A reused buffer is emptied
+    /// before each playback either way. Buffer-sourced playback never allocates a ring
+    /// buffer.
+    bool persistent_ring_buffer{false};
 
     // ========================================
     // ESP-IDF thread config (ignored on host)

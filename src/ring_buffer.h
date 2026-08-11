@@ -42,6 +42,13 @@ class RingBuffer {
 public:
     RingBuffer() = default;
 
+    /// @brief Releases the ring buffer before the storage it points at is freed
+    /// @note Explicit rather than left to member destruction, which would free the storage
+    /// first.
+    ~RingBuffer() {
+        this->release();
+    }
+
     RingBuffer(const RingBuffer&) = delete;
     RingBuffer& operator=(const RingBuffer&) = delete;
 
@@ -49,6 +56,24 @@ public:
     /// @param size Number of bytes to allocate for the ring buffer
     /// @return true on success, false if allocation fails
     bool create(size_t size);
+
+    /// @brief Tears down the ring buffer and frees its storage
+    /// @note Safe to call when nothing is allocated. No reader or writer may be active.
+    void release();
+
+    /// @brief Discards any buffered data, keeping the existing storage
+    /// @note No reader or writer may be active. Use between playbacks when the storage is
+    /// reused, so leftover bytes are not served to the next consumer.
+    /// @return true if the ring buffer is ready for use, false if nothing is allocated
+    bool reset();
+
+    /// @brief Returns whether the ring buffer is allocated and ready for use
+    /// @note create() and reset() both release their storage on failure, so this never
+    /// reports true for a half-built buffer.
+    /// @return true if create() has succeeded and release() has not been called since
+    bool allocated() const {
+        return static_cast<bool>(this->storage_);
+    }
 
     /// @brief Writes up to len bytes into the ring buffer
     /// @param data Pointer to the data to write

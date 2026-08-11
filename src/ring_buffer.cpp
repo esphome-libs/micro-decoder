@@ -21,10 +21,40 @@ namespace micro_decoder {
 // ============================================================================
 
 bool RingBuffer::create(size_t size) {
+    // Tear down before allocating, not after: allocate() frees the old storage before it tries
+    // for the new one, so an SPSC left standing here would point at freed memory if that fails
+    this->spsc_.destroy();
     if (!this->storage_.allocate(size)) {
         return false;
     }
-    return this->spsc_.create(size, this->storage_.data());
+    if (!this->spsc_.create(size, this->storage_.data())) {
+        // Leave nothing half-built behind: allocated() reports storage, so keeping the
+        // storage here would make a failed create() look like a usable ring buffer
+        this->release();
+        return false;
+    }
+    return true;
+}
+
+bool RingBuffer::reset() {
+    if (!this->storage_) {
+        return false;
+    }
+    // Rebuilding is how the underlying ring buffer is emptied; there is no cheaper reset
+    this->spsc_.destroy();
+    if (!this->spsc_.create(this->storage_.size(), this->storage_.data())) {
+        // Same invariant as create(): never leave storage behind that allocated() would
+        // report as a usable ring buffer
+        this->release();
+        return false;
+    }
+    return true;
+}
+
+void RingBuffer::release() {
+    // Tear the ring buffer down before freeing the storage it points at
+    this->spsc_.destroy();
+    this->storage_.release();
 }
 
 size_t RingBuffer::write(const uint8_t* data, size_t len, uint32_t timeout_ms) {
