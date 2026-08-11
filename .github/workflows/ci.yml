@@ -6,11 +6,24 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual "Run workflow" from the Actions tab.
+  workflow_dispatch:
+
+# Least privilege: every job here only reads the repo (checkout, build, test, cache). Jobs that
+# need more should add a narrower job-level permissions block rather than widening this default.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # New commits supersede an in-progress run on the same ref instead of running both to completion.
+  cancel-in-progress: true
 
 jobs:
   pre-commit:
     name: Pre-commit checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -23,6 +36,7 @@ jobs:
   lint:
     name: Static analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -43,6 +57,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -63,9 +78,67 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: tests/build/_deps
+          key: fetchcontent-tests-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Configure unit tests with sanitizers
+        run: cmake -B tests/build -DENABLE_SANITIZERS=ON -DENABLE_WERROR=ON tests
+
+      - name: Build unit tests
+        run: cmake --build tests/build --parallel
+
+      - name: Run unit tests
+        run: ctest --test-dir tests/build --output-on-failure
+
+  test-tsan:
+    name: Unit tests (ThreadSanitizer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: tests/build-tsan/_deps
+          key: fetchcontent-tests-tsan-${{ hashFiles('cmake/host.cmake') }}
+
+      - name: Configure unit tests with ThreadSanitizer
+        # The reader, decoder, and caller threads hand off through the ring buffer and event
+        # flags, so TSan covers races that ASan/UBSan cannot see.
+        # ENABLE_TSAN is mutually exclusive with ENABLE_SANITIZERS.
+        run: cmake -B tests/build-tsan -DENABLE_TSAN=ON -DENABLE_WERROR=ON tests
+
+      - name: Build unit tests
+        run: cmake --build tests/build-tsan --parallel
+
+      - name: Run unit tests
+        run: ctest --test-dir tests/build-tsan --output-on-failure
+
   platformio:
     name: PlatformIO Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         include:

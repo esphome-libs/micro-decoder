@@ -95,7 +95,10 @@ else()
     target_compile_definitions(micro_decoder PUBLIC
         MICRO_DECODER_VERSION="${MICRO_DECODER_VERSION}")
 
-    # Examples
-    add_subdirectory(host_examples/basic_player)
+    # Examples (optional so the tests can build without PortAudio)
+    option(MICRO_DECODER_BUILD_EXAMPLES "Build host example programs (requires PortAudio)" ON)
+    if(MICRO_DECODER_BUILD_EXAMPLES)
+        add_subdirectory(host_examples/basic_player)
+    endif()
 
 endif()

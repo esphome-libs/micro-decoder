@@ -89,6 +89,24 @@ int main() {
 
 See the [Integration Guide](docs/INTEGRATION.md) for configuration, threading, and buffer playback.
 
+## Testing
+
+The orchestration layer is covered by a ctest suite (`tests/`): file-type detection from Content-Type and URL, the transfer/ring buffer plumbing, event-flag semantics, and the DecoderSource lifecycle on both playback paths (state machine, listener contracts, backpressure, stop and failure handling). The `play_url()` tests run against a local loopback HTTP server; WAV pass-through provides a bit-exact end-to-end reference, so no fixture files are needed. Codec decode math is validated in each codec's own repository.
+
+```bash
+cd tests
+cmake -DENABLE_SANITIZERS=ON -B build && cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The reader, decoder, and caller threads hand off through the ring buffer and event flags, so the suite is also run under ThreadSanitizer, which catches races AddressSanitizer and UBSan cannot see. `ENABLE_TSAN` is mutually exclusive with `ENABLE_SANITIZERS`:
+
+```bash
+cd tests
+cmake -DENABLE_TSAN=ON -B build-tsan && cmake --build build-tsan
+ctest --test-dir build-tsan --output-on-failure
+```
+
 ## License
 
 Apache 2.0

@@ -1,0 +1,104 @@
+cmake_minimum_required(VERSION 3.16)
+project(micro_decoder_tests CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Compile DB for editor/LSP integration. script/clang-tidy.sh does not use it: that script
+# hardcodes the root build/ directory and only lints src/ and host_examples/.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Option to enable sanitizers for debugging
+option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+
+# Option to enable ThreadSanitizer. The reader, decoder, and caller threads hand off through
+# the ring buffer and event flags, which is exactly the kind of cross-thread path ASan and
+# UBSan cannot see.
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
+# Treat warnings as errors (also picked up by the micro_decoder library build below)
+option(ENABLE_WERROR "Treat warnings as errors" OFF)
+
+if(ENABLE_SANITIZERS AND ENABLE_TSAN)
+    message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_TSAN cannot be combined")
+endif()
+
+if(ENABLE_SANITIZERS)
+    message(STATUS "Building with AddressSanitizer and UndefinedBehaviorSanitizer")
+    # -fno-sanitize-recover=undefined makes UBSan abort instead of printing and continuing,
+    # so a UB finding fails the test's exit code rather than being reported as a pass
+    set(SANITIZER_FLAGS
+        "-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SANITIZER_FLAGS}")
+endif()
+
+if(ENABLE_TSAN)
+    message(STATUS "Building with ThreadSanitizer")
+    set(TSAN_FLAGS "-fsanitize=thread -fno-omit-frame-pointer -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TSAN_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TSAN_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${TSAN_FLAGS}")
+endif()
+
+# The tests drive the library directly; skip the host examples so a PortAudio
+# install isn't required to run the test suite.
+set(MICRO_DECODER_BUILD_EXAMPLES OFF CACHE BOOL "Tests do not need the host examples")
+
+# Build micro-decoder as a standard host library
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. micro-decoder-build)
+
+add_executable(test_micro_decoder test_micro_decoder.cpp)
+target_link_libraries(test_micro_decoder PRIVATE micro_decoder)
+# The tests exercise internal pieces (TransferBuffer, RingBuffer, EventFlags)
+# alongside the public API
+target_include_directories(test_micro_decoder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_compile_options(test_micro_decoder PRIVATE
+    -Wall
+    -Wextra
+    -Wshadow
+    -Wimplicit-fallthrough
+    # Any function not declared in a header must be static; keeps
+    # -Wunused-function able to see dead internal functions. Clang and GCC
+    # spell the C++ variant of this check differently.
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wmissing-prototypes>
+    $<$<CXX_COMPILER_ID:GNU>:-Wmissing-declarations>
+    # Require static_cast/reinterpret_cast over C-style casts
+    -Wold-style-cast
+    $<$<BOOL:${ENABLE_WERROR}>:-Werror>
+)
+
+find_package(Threads REQUIRED)
+target_link_libraries(test_micro_decoder PRIVATE Threads::Threads)
+
+enable_testing()
+
+set(DECODER_TESTS
+    detect_content_type
+    detect_url_extension
+    stream_info
+    transfer_buffer
+    ring_buffer_basic
+    ring_buffer_threaded
+    event_flags
+    play_buffer_validation
+    play_buffer_passthrough
+    play_buffer_backpressure
+    play_buffer_stop_deferred
+    stop_from_callback
+    play_buffer_failure_and_reuse
+    destructor_while_playing
+    play_url_stream
+    play_url_extension_fallback
+    play_url_error_states
+    play_url_stop_mid_stream
+    play_url_reader_stops_on_decoder_exit
+)
+
+foreach(test_name IN LISTS DECODER_TESTS)
+    add_test(NAME ${test_name} COMMAND test_micro_decoder ${test_name})
+    # Every wait in the tests is individually bounded; this is a backstop so a
+    # regression that hangs a thread join can never wedge CI.
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
+endforeach()
