@@ -46,6 +46,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <stdlib.h>  // setenv() is POSIX, so not guaranteed by <cstdlib>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -1328,6 +1329,13 @@ static const TestCase TESTS[] = {
 int main(int argc, char* argv[]) {
     const char* filter = (argc > 1) ? argv[1] : nullptr;
     set_log_level(LOG_LEVEL_ERROR);  // keep expected-failure noise out of test output
+
+    // libcurl does not special-case loopback: with http_proxy or ALL_PROXY set it sends
+    // the play_url() requests to the proxy instead of the local fixture, which fails five
+    // tests for reasons that look like library bugs. Done here rather than as a CTest
+    // property so it also covers running this binary directly. Safe before any test
+    // spawns a thread; libcurl reads the proxy environment per transfer.
+    setenv("no_proxy", "*", 1);
 
     int ran = 0;
     int failed = 0;
