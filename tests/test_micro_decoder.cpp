@@ -318,6 +318,15 @@ public:
 
     void stop() {
         this->running_.store(false);
+        // serve_loop() only observes running_ between blocking syscalls, so a thread parked
+        // in send() to a peer that stopped reading but has not hung up would never see the
+        // stop and join() would hang forever. Shutting the accepted socket down from here
+        // makes that send() fail immediately, so a failing test fails fast instead of
+        // wedging until the ctest timeout.
+        int conn = this->conn_fd_.load();
+        if (conn >= 0) {
+            ::shutdown(conn, SHUT_RDWR);
+        }
         if (this->thread_.joinable()) {
             this->thread_.join();
         }
@@ -367,7 +376,10 @@ private:
             int one = 1;
             ::setsockopt(conn, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
 #endif
+            // Published so stop() can unblock a send() that is stuck on this connection
+            this->conn_fd_.store(conn);
             this->handle(conn);
+            this->conn_fd_.store(-1);
             ::close(conn);
         }
     }
@@ -459,6 +471,8 @@ private:
     // size_t / atomic fields
     std::atomic<size_t> bytes_sent_{0};
     std::atomic<int> connections_{0};
+    /// @brief Accepted connection currently being served, or -1; see stop()
+    std::atomic<int> conn_fd_{-1};
     std::atomic<bool> client_disconnected_{false};
     std::atomic<bool> running_{false};
 

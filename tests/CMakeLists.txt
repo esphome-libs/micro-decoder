@@ -4,7 +4,8 @@ project(micro_decoder_tests CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# script/clang-tidy.sh can lint the tests against this build's compile DB
+# Compile DB for editor/LSP integration. script/clang-tidy.sh does not use it: that script
+# hardcodes the root build/ directory and only lints src/ and host_examples/.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Option to enable sanitizers for debugging
