@@ -51,6 +51,10 @@ namespace micro_decoder {
  * }
  * @endcode
  *
+ * @note Every public method except state() must be called from a single thread. They are
+ * safe to call from on_state_change(), which fires on that same thread from loop(), but
+ * calling them concurrently from another thread is not supported.
+ *
  * Non-copyable, non-movable. Uses pImpl to hide platform internals.
  */
 class DecoderSource {

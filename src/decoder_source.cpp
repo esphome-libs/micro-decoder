@@ -76,7 +76,6 @@ struct DecoderSource::Impl {
     // bool fields
     bool initialized_{false};
     std::atomic<bool> pending_state_notification_{false};
-    std::atomic<bool> stop_in_progress_{false};
 
     explicit Impl(const DecoderConfig& cfg)
         : config(cfg), initialized_(this->event_flags.create()) {}
@@ -433,9 +432,9 @@ bool DecoderSource::play_buffer(const uint8_t* data, size_t length, AudioFileTyp
 }
 
 void DecoderSource::stop() {
-    // Re-entrancy guard: prevent recursive stop() from on_state_change callbacks
-    bool expected = false;
-    if (!this->impl_->stop_in_progress_.compare_exchange_strong(expected, true)) {
+    // Nothing was ever started without event flags, and touching them would dereference a
+    // null handle
+    if (!this->impl_->initialized_) {
         return;
     }
 
@@ -457,11 +456,13 @@ void DecoderSource::stop() {
     if (current == DecoderState::PLAYING || current == DecoderState::FAILED) {
         this->impl_->store_state(DecoderState::IDLE);
     }
-
-    this->impl_->stop_in_progress_.store(false, std::memory_order_release);
 }
 
 void DecoderSource::loop() {
+    // pump_events() reads the event flags, whose handle was never created
+    if (!this->impl_->initialized_) {
+        return;
+    }
     this->impl_->pump_events();
 }
 
