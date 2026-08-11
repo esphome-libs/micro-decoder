@@ -96,7 +96,7 @@ public:
     /// On ESP-IDF, applies config via esp_pthread_set_cfg() and restores the calling
     /// thread's previous configuration afterwards, so the caller's environment is left
     /// exactly as it was found. A configuration the platform rejects is not fatal: the
-    /// thread is still created, using the platform defaults.
+    /// thread is still created, using the platform defaults applied in its place.
     /// @note Never aborts on failure, unlike constructing a std::thread.
     /// @param config Creation-time thread settings
     /// @param entry Thread entry point
@@ -108,15 +108,18 @@ public:
             return false;
         }
 
-        bool applied = this->apply_thread_config(config);
+        // Refuse to spawn under a configuration we could not pin down; inheriting whatever the
+        // calling thread happened to have set is how a worker ends up with an unrelated stack
+        // size or priority
+        if (!this->apply_thread_config(config)) {
+            MD_LOGE(THREAD_TAG, "Failed to configure thread '%s'",
+                    config.name != nullptr ? config.name : "?");
+            return false;
+        }
 
         int err = pthread_create(&this->handle_, nullptr, entry, arg);
 
-        // Nothing was changed when the configuration was rejected, so there is nothing to
-        // put back
-        if (applied) {
-            this->restore_thread_config();
-        }
+        this->restore_thread_config();
 
         if (err != 0) {
             MD_LOGE(THREAD_TAG, "Failed to create thread '%s': error %d",
@@ -147,11 +150,13 @@ private:
 #ifdef ESP_PLATFORM
 
     /// @brief Applies config to the calling thread, saving whatever was configured before
-    /// @note A rejected configuration leaves the calling thread's settings untouched, so the
-    /// thread is created with the platform defaults rather than not at all.
+    /// @note A rejected configuration falls back to the platform defaults, which are applied
+    /// explicitly rather than by leaving the slot alone: esp_pthread_set_cfg() is per calling
+    /// thread and sticky, so a configuration some other component left there would otherwise
+    /// be inherited by this worker.
     /// @param config Creation-time thread settings
-    /// @return true if the configuration was accepted by esp_pthread_set_cfg(), which is
-    /// also whether restore_thread_config() has anything to undo
+    /// @return true if a known configuration is in place and restore_thread_config() must run;
+    /// false if even the defaults were rejected, in which case no thread should be created
     bool apply_thread_config(const ThreadConfig& config) {
         this->had_previous_cfg_ = (esp_pthread_get_cfg(&this->previous_cfg_) == ESP_OK);
 
@@ -164,9 +169,18 @@ private:
         }
 
         esp_err_t err = esp_pthread_set_cfg(&cfg);
-        if (err != ESP_OK) {
-            MD_LOGW(THREAD_TAG, "Rejected thread config for '%s' (%s); using defaults",
-                    config.name != nullptr ? config.name : "?", esp_err_to_name(err));
+        if (err == ESP_OK) {
+            return true;
+        }
+
+        MD_LOGW(THREAD_TAG, "Rejected thread config for '%s' (%s); falling back to defaults",
+                config.name != nullptr ? config.name : "?", esp_err_to_name(err));
+
+        esp_pthread_cfg_t defaults = esp_pthread_get_default_config();
+        esp_err_t default_err = esp_pthread_set_cfg(&defaults);
+        if (default_err != ESP_OK) {
+            MD_LOGE(THREAD_TAG, "Rejected default thread config for '%s' (%s)",
+                    config.name != nullptr ? config.name : "?", esp_err_to_name(default_err));
             return false;
         }
         return true;

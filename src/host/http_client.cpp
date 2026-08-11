@@ -58,6 +58,9 @@ public:
     /// @brief Opens an HTTP connection and blocks until headers arrive
     /// @note request.rx_buffer_size and request.read_timeout_ms are unused here: curl manages
     /// its own buffers and read() never blocks.
+    /// @note Headers are waited out in a single attempt given the full
+    /// HTTP_MAX_CONNECT_ATTEMPTS * request.connect_timeout_ms budget, rather than the repeated
+    /// fresh connections the ESP-IDF client uses to reach the same bound.
     /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status), false on connection error or non-2xx status
     bool open(const HttpRequest& request) override {
@@ -129,8 +132,14 @@ public:
 
         curl_multi_add_handle(this->multi_, this->easy_);
 
-        // Poll until headers arrive or timeout
-        uint64_t deadline = now_ms() + (timeout_ms == 0 ? DEFAULT_TIMEOUT_MS : timeout_ms);
+        // Poll until headers arrive or timeout. curl gets the whole connect budget in one
+        // attempt rather than the fresh reconnects the ESP client needs: those work around
+        // ESP_ERR_HTTP_EAGAIN poisoning the handle, and dropping a slow but healthy connection
+        // here would only lose the progress it has already made. The worst-case wall clock is
+        // the same either way, which is what the open() contract and the decoder's wait budget
+        // are written against
+        uint64_t attempt_ms = (timeout_ms == 0 ? DEFAULT_TIMEOUT_MS : timeout_ms);
+        uint64_t deadline = now_ms() + attempt_ms * HTTP_MAX_CONNECT_ATTEMPTS;
         while (!this->headers_ready_ && !this->transfer_done_) {
             uint64_t now = now_ms();
             if (now >= deadline) {

@@ -108,7 +108,9 @@ public:
         }
 
         int64_t header_len = esp_http_client_fetch_headers(this->client_);
-        uint8_t attempts = 0;
+        // The fetch above is attempt one, so the loop adds MAX_HEADER_ATTEMPTS - 1 more. Starting
+        // at zero would spend one connect_timeout_ms more than the budget the decoder waits out
+        uint8_t attempts = 1;
         while (header_len < 0 && attempts < MAX_HEADER_ATTEMPTS) {
             if (header_len != -ESP_ERR_HTTP_EAGAIN) {
                 MD_LOGE(TAG, "Failed to fetch headers");

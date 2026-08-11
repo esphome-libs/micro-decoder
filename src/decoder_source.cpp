@@ -87,8 +87,9 @@ struct DecoderSource::Impl {
 
     explicit Impl(const DecoderConfig& cfg)
         : config(cfg), initialized_(this->event_flags.create()) {
-        // Claim the ring buffer up front so playback cannot fail later on a fragmented
-        // heap. A failure here is not fatal: ensure_ring_buffer() retries at play time.
+        // Claim the ring buffer up front so the fragmentation-sensitive allocation happens
+        // once, here, rather than on every play_url(). A failure is not fatal: it costs that
+        // head start, and ensure_ring_buffer() retries at play time.
         if (this->config.persistent_ring_buffer &&
             !this->ring_buffer.create(this->config.ring_buffer_size)) {
             MD_LOGW(TAG, "Failed to preallocate the ring buffer; will retry on playback");

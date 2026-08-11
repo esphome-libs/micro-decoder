@@ -105,11 +105,14 @@ public:
 
     /// @brief Opens the URL and fetches headers
     /// Blocks until the headers arrive, the request fails, or request.cancel_check returns
-    /// true. Redirects are followed internally. An attempt that times out with the headers
-    /// still incomplete is retried on a fresh connection, up to HTTP_MAX_CONNECT_ATTEMPTS
-    /// times, so the worst case is that many times request.connect_timeout_ms.
-    /// @note cancel_check is polled between attempts, so a caller asking to stop mid-connect
-    /// waits at most one attempt rather than the whole sequence.
+    /// true. Redirects are followed internally. A server that is slow to produce headers is
+    /// given up to HTTP_MAX_CONNECT_ATTEMPTS times request.connect_timeout_ms in total before
+    /// the open fails. How that budget is spent is the implementation's choice: the ESP-IDF
+    /// client retries on fresh connections because ESP_ERR_HTTP_EAGAIN leaves its handle
+    /// unable to report headers that arrive later, while the host client simply waits out the
+    /// whole budget on one connection.
+    /// @note cancel_check is polled at least once per request.connect_timeout_ms, so a caller
+    /// asking to stop mid-connect waits at most that long rather than the whole budget.
     /// @note request.read_timeout_ms applies only once the headers are in, to body reads.
     /// @param request Connection settings, timeouts, and cancellation hook
     /// @return true on success (2xx status)

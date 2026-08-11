@@ -21,6 +21,9 @@ namespace micro_decoder {
 // ============================================================================
 
 bool RingBuffer::create(size_t size) {
+    // Tear down before allocating, not after: allocate() frees the old storage before it tries
+    // for the new one, so an SPSC left standing here would point at freed memory if that fails
+    this->spsc_.destroy();
     if (!this->storage_.allocate(size)) {
         return false;
     }
