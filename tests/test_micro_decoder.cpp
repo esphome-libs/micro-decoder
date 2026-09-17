@@ -492,6 +492,9 @@ static bool test_detect_content_type() {
         {"audio/wav", nullptr, AudioFileType::WAV},
         {"audio/x-wav", nullptr, AudioFileType::WAV},
         {"audio/wave", nullptr, AudioFileType::WAV},
+        {"audio/vnd.wave", nullptr, AudioFileType::WAV},
+        {"audio/vnd.wave; codec=1", "http://x.example/chime", AudioFileType::WAV},
+        {"Audio/Vnd.Wave; codec=1", "http://x.example/chime?token=1", AudioFileType::WAV},
 
         // Parameters and case-insensitivity
         {"audio/mpeg; charset=UTF-8", nullptr, AudioFileType::MP3},
@@ -519,6 +522,7 @@ static bool test_detect_content_type() {
         // Unknown types with no usable URL
         {"text/html", nullptr, AudioFileType::NONE},
         {"application/octet-stream", nullptr, AudioFileType::NONE},
+        {"application/vnd.wave", nullptr, AudioFileType::NONE},
         {"", nullptr, AudioFileType::NONE},
         {nullptr, nullptr, AudioFileType::NONE},
 
@@ -1086,7 +1090,7 @@ static bool test_destructor_while_playing() {
 // DecoderSource: play_url() path
 // ============================================================================
 
-static bool test_play_url_stream() {
+static bool check_play_url_stream(const char* content_type) {
     // Full HTTP pipeline with the file type coming from Content-Type alone
     // (the URL path has no extension): PCM must arrive bit-exact and the
     // stream must end in IDLE.
@@ -1094,7 +1098,7 @@ static bool test_play_url_stream() {
     std::vector<uint8_t> wav = make_wav(2, 44100, 8192, &payload);
 
     TestHttpServer::Response resp;
-    resp.content_type = "audio/wav";
+    resp.content_type = content_type;
     resp.body = wav;
     resp.chunk_size = 4096;  // stream in pieces so the ring buffer matters
     TestHttpServer server;
@@ -1118,6 +1122,11 @@ static bool test_play_url_stream() {
     src.stop();
     server.stop();
     return true;
+}
+
+static bool test_play_url_stream() {
+    return check_play_url_stream("audio/wav") &&
+           check_play_url_stream("audio/vnd.wave; codec=1");
 }
 
 static bool test_play_url_extension_fallback() {
