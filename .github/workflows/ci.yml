@@ -218,12 +218,14 @@ jobs:
             ~/.platformio
             examples/${{ matrix.example }}/.pio
             examples/${{ matrix.example }}/managed_components
-          key: pio-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/platformio.ini', matrix.example), format('examples/{0}/dependencies.lock', matrix.example)) }}
+          key: pio-core-6.1.19-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/platformio.ini', matrix.example), format('examples/{0}/dependencies.lock', matrix.example)) }}
           restore-keys: |
-            pio-${{ matrix.example }}-
+            pio-core-6.1.19-${{ matrix.example }}-
 
       - name: Install PlatformIO
-        run: pip install platformio
+        # The pinned pioarduino platform requires SCons 4.8.1, as used by Core 6.1.19.
+        # Core 6.2 replaces it with 4.11.1 during the build (pioarduino/platform-espressif32#529).
+        run: pip install "platformio==6.1.19"
 
       # This is the only build that compiles the component's ESP-only code paths, so it is
       # where their warnings have to be errors. The example's platformio.ini turns ENABLE_WERROR
