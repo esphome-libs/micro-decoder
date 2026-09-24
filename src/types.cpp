@@ -113,7 +113,8 @@ static AudioFileType type_from_content_type(const char* content_type) {
 #endif
     }
 #ifdef MICRO_DECODER_CODEC_WAV
-    if (contains("audio/wav") || contains("audio/x-wav") || contains("audio/wave")) {
+    if (contains("audio/wav") || contains("audio/x-wav") || contains("audio/wave") ||
+        contains("audio/vnd.wave")) {
         return AudioFileType::WAV;
     }
 #endif
